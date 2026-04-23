@@ -6,12 +6,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use ctx_ast::{SymbolKind, extract_symbols, slice_symbols};
 use ctx_config::{CtxConfig, write_default_config};
-use ctx_graph::{GraphStore, SnippetHit, SymbolHit};
+use ctx_graph::{GraphStore, MemoryDirective, SnippetHit, SymbolHit};
 use ctx_intake::{Intent, QueryIntake};
 use ctx_pack::{PackInput, PackResult, build_pack};
 use ctx_prune::{PruneReport, prune_diff, prune_logs};
 use ctx_semantic::{ChunkCandidate, RankingConfig, SemanticBackendKind, rank_chunks_hybrid};
 use ctx_telemetry::{StatsSnapshot, write_latest_stats};
+use ctx_token::estimate_tokens;
 use serde::Serialize;
 use walkdir::WalkDir;
 
@@ -30,6 +31,49 @@ pub struct RetrievalHit {
     pub content: String,
     pub score: f64,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryDirectiveResult {
+    pub key: String,
+    pub body: String,
+    pub scope: String,
+    pub source: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryAbBenchmarkResult {
+    pub query: String,
+    pub markdown_path: String,
+    pub markdown_tokens: usize,
+    pub graph_memory_tokens: usize,
+    pub token_reduction_pct: f64,
+    pub markdown_query_term_coverage: f64,
+    pub graph_query_term_coverage: f64,
+    pub markdown_directive_lines: usize,
+    pub graph_directives_count: usize,
+    pub markdown_success_rate: Option<f64>,
+    pub graph_success_rate: Option<f64>,
+    pub quality_winner: Option<String>,
+    pub quality_delta_pct: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryImportReport {
+    pub markdown_path: String,
+    pub scope: String,
+    pub source: String,
+    pub imported: usize,
+    pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryExportReport {
+    pub output_path: String,
+    pub scope: Option<String>,
+    pub directives: usize,
 }
 
 pub fn init_repo(repo_root: &Path) -> Result<PathBuf> {
@@ -100,6 +144,12 @@ pub fn run_pack(
         }
     }
 
+    let memory = if cfg.graph.enabled {
+        load_memory_context(repo_root, &cfg, query, 12).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
     let pack_input = PackInput {
         query: query.to_string(),
         error_root_cause: root_cause,
@@ -107,7 +157,7 @@ pub fn run_pack(
         tests: Vec::new(),
         recent_diff: None,
         dependencies: Vec::new(),
-        memory: Vec::new(),
+        memory,
         docs,
         budget: budget.unwrap_or(cfg.general.default_budget),
     };
@@ -322,6 +372,212 @@ pub fn run_retrieve(repo_root: &Path, query: &str, top_k: usize) -> Result<Vec<R
     Ok(out)
 }
 
+pub fn run_memory_set(
+    repo_root: &Path,
+    key: &str,
+    body: &str,
+    scope: &str,
+    source: &str,
+) -> Result<MemoryDirectiveResult> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    store.upsert_memory_directive(key, body, scope, source)?;
+    let directive = store
+        .get_memory_directive(key)?
+        .context("memory directive should exist after upsert")?;
+    Ok(map_memory_directive(directive))
+}
+
+pub fn run_memory_get(repo_root: &Path, key: &str) -> Result<Option<MemoryDirectiveResult>> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    Ok(store.get_memory_directive(key)?.map(map_memory_directive))
+}
+
+pub fn run_memory_list(
+    repo_root: &Path,
+    scope: Option<&str>,
+    limit: usize,
+) -> Result<Vec<MemoryDirectiveResult>> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    Ok(store
+        .list_memory_directives(scope, limit.max(1))?
+        .into_iter()
+        .map(map_memory_directive)
+        .collect())
+}
+
+pub fn run_memory_delete(repo_root: &Path, key: &str) -> Result<bool> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    store.delete_memory_directive(key)
+}
+
+pub fn run_memory_ab_benchmark(
+    repo_root: &Path,
+    query: &str,
+    markdown_path: &Path,
+    limit: usize,
+    checklist_path: Option<&Path>,
+    markdown_answer_path: Option<&Path>,
+    graph_answer_path: Option<&Path>,
+) -> Result<MemoryAbBenchmarkResult> {
+    let markdown = fs::read_to_string(markdown_path)
+        .with_context(|| format!("failed to read markdown file {}", markdown_path.display()))?;
+    let markdown_tokens = estimate_tokens(&markdown);
+    let markdown_directive_lines = markdown_directive_lines(&markdown);
+    let markdown_query_term_coverage = query_term_coverage(query, &markdown);
+
+    let memory_items = run_memory_list(repo_root, None, limit.max(1))?;
+    let memory_blob = memory_items
+        .iter()
+        .map(|m| format!("[{}:{}:{}] {}", m.scope, m.source, m.key, m.body))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let graph_memory_tokens = estimate_tokens(&memory_blob);
+    let graph_query_term_coverage = query_term_coverage(query, &memory_blob);
+    let graph_directives_count = memory_items.len();
+
+    let token_reduction_pct = if markdown_tokens == 0 {
+        0.0
+    } else {
+        (1.0 - graph_memory_tokens as f64 / markdown_tokens as f64) * 100.0
+    };
+
+    let checklist = if let Some(path) = checklist_path {
+        load_checklist(path)?
+    } else {
+        Vec::new()
+    };
+
+    let markdown_success_rate = if checklist.is_empty() {
+        None
+    } else {
+        Some(answer_success_rate(markdown_answer_path, &checklist)?)
+    };
+
+    let graph_success_rate = if checklist.is_empty() {
+        None
+    } else {
+        Some(answer_success_rate(graph_answer_path, &checklist)?)
+    };
+
+    let (quality_winner, quality_delta_pct) = match (markdown_success_rate, graph_success_rate) {
+        (Some(md), Some(gr)) => {
+            let winner = if gr > md {
+                Some("graph".to_string())
+            } else if md > gr {
+                Some("markdown".to_string())
+            } else {
+                Some("tie".to_string())
+            };
+            let delta = if md == 0.0 && gr == 0.0 {
+                Some(0.0)
+            } else {
+                Some((gr - md) * 100.0)
+            };
+            (winner, delta)
+        }
+        _ => (None, None),
+    };
+
+    Ok(MemoryAbBenchmarkResult {
+        query: query.to_string(),
+        markdown_path: markdown_path.display().to_string(),
+        markdown_tokens,
+        graph_memory_tokens,
+        token_reduction_pct,
+        markdown_query_term_coverage,
+        graph_query_term_coverage,
+        markdown_directive_lines,
+        graph_directives_count,
+        markdown_success_rate,
+        graph_success_rate,
+        quality_winner,
+        quality_delta_pct,
+    })
+}
+
+pub fn run_memory_import_markdown(
+    repo_root: &Path,
+    markdown_path: &Path,
+    scope: &str,
+    source: &str,
+    key_prefix: Option<&str>,
+) -> Result<MemoryImportReport> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+
+    let markdown = fs::read_to_string(markdown_path)
+        .with_context(|| format!("failed to read markdown file {}", markdown_path.display()))?;
+    let directives = parse_markdown_directives(&markdown);
+
+    let prefix = key_prefix
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            markdown_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("memory")
+                .to_lowercase()
+        });
+
+    let mut keys = Vec::new();
+    for (idx, body) in directives.iter().enumerate() {
+        let key = format!("{}.{}", slugify(&prefix), idx + 1);
+        store.upsert_memory_directive(&key, body, scope, source)?;
+        keys.push(key);
+    }
+
+    Ok(MemoryImportReport {
+        markdown_path: markdown_path.display().to_string(),
+        scope: scope.to_string(),
+        source: source.to_string(),
+        imported: keys.len(),
+        keys,
+    })
+}
+
+pub fn run_memory_export_markdown(
+    repo_root: &Path,
+    output_path: &Path,
+    scope: Option<&str>,
+    limit: usize,
+    title: Option<&str>,
+) -> Result<MemoryExportReport> {
+    let directives = run_memory_list(repo_root, scope, limit.max(1))?;
+    let header = title.unwrap_or("Graph Memory Directives");
+
+    let mut lines = vec![format!("# {header}")];
+    for item in &directives {
+        lines.push(format!(
+            "- [{}:{}:{}] {}",
+            item.scope, item.source, item.key, item.body
+        ));
+    }
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::write(output_path, lines.join("\n") + "\n")
+        .with_context(|| format!("failed to write {}", output_path.display()))?;
+
+    Ok(MemoryExportReport {
+        output_path: output_path.display().to_string(),
+        scope: scope.map(ToOwned::to_owned),
+        directives: directives.len(),
+    })
+}
+
 fn index_symbols_and_edges(store: &GraphStore, file_path: &str, content: &str) -> Result<()> {
     let symbols = extract_symbols(content, file_path);
     if symbols.is_empty() {
@@ -424,6 +680,177 @@ fn query_terms(query: &str) -> Vec<String> {
         .filter(|part| part.len() > 1)
         .map(|part| part.to_lowercase())
         .collect()
+}
+
+fn map_memory_directive(item: MemoryDirective) -> MemoryDirectiveResult {
+    MemoryDirectiveResult {
+        key: item.key,
+        body: item.body,
+        scope: item.scope,
+        source: item.source,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+    }
+}
+
+fn load_memory_context(
+    repo_root: &Path,
+    cfg: &CtxConfig,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<String>> {
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+
+    let mut directives = store.search_memory_directives(query, limit.max(1))?;
+    if directives.is_empty() {
+        directives = store.list_memory_directives(None, limit.max(1))?;
+    }
+
+    Ok(directives
+        .into_iter()
+        .map(|m| format!("[{}:{}:{}] {}", m.scope, m.source, m.key, m.body))
+        .collect())
+}
+
+fn query_term_coverage(query: &str, text: &str) -> f64 {
+    let terms = query_terms(query);
+    if terms.is_empty() {
+        return 1.0;
+    }
+    let hay = text.to_lowercase();
+    let matched = terms
+        .iter()
+        .filter(|term| hay.contains(term.as_str()))
+        .count();
+    (matched as f64 / terms.len() as f64).clamp(0.0, 1.0)
+}
+
+fn markdown_directive_lines(markdown: &str) -> usize {
+    markdown
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let bullet = trimmed.starts_with("- ")
+                || trimmed.starts_with("* ")
+                || trimmed.starts_with("1. ")
+                || trimmed.starts_with("2. ")
+                || trimmed.starts_with("3. ");
+            let heading = trimmed.starts_with('#');
+            if bullet || heading { Some(()) } else { None }
+        })
+        .count()
+}
+
+fn parse_markdown_directives(markdown: &str) -> Vec<String> {
+    let mut current_heading = String::new();
+    let mut out = Vec::new();
+
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix('#') {
+            let heading = rest.trim().trim_start_matches('#').trim();
+            if !heading.is_empty() {
+                current_heading = heading.to_string();
+            }
+            continue;
+        }
+
+        let body = if let Some(rest) = trimmed
+            .strip_prefix("- [ ] ")
+            .or_else(|| trimmed.strip_prefix("- [x] "))
+            .or_else(|| trimmed.strip_prefix("* [ ] "))
+            .or_else(|| trimmed.strip_prefix("* [x] "))
+            .or_else(|| trimmed.strip_prefix("- "))
+            .or_else(|| trimmed.strip_prefix("* "))
+        {
+            rest.trim()
+        } else {
+            continue;
+        };
+
+        if body.is_empty() {
+            continue;
+        }
+
+        if current_heading.is_empty() {
+            out.push(body.to_string());
+        } else {
+            out.push(format!("{current_heading}: {body}"));
+        }
+    }
+
+    out
+}
+
+fn slugify(input: &str) -> String {
+    let lowered = input.to_lowercase();
+    let mut out = String::new();
+    let mut last_dot = false;
+    for c in lowered.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            last_dot = false;
+        } else if !last_dot {
+            out.push('.');
+            last_dot = true;
+        }
+    }
+    let cleaned = out.trim_matches('.').to_string();
+    if cleaned.is_empty() {
+        "memory".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn load_checklist(path: &Path) -> Result<Vec<String>> {
+    let body = fs::read_to_string(path)
+        .with_context(|| format!("failed to read checklist {}", path.display()))?;
+    let items = body
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            trimmed
+                .strip_prefix("- [ ] ")
+                .or_else(|| trimmed.strip_prefix("- [x] "))
+                .or_else(|| trimmed.strip_prefix("* [ ] "))
+                .or_else(|| trimmed.strip_prefix("* [x] "))
+                .or_else(|| trimmed.strip_prefix("- "))
+                .or_else(|| trimmed.strip_prefix("* "))
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .collect::<Vec<_>>();
+    Ok(items)
+}
+
+fn answer_success_rate(answer_path: Option<&Path>, checklist: &[String]) -> Result<f64> {
+    let Some(path) = answer_path else {
+        return Ok(0.0);
+    };
+    let answer = fs::read_to_string(path)
+        .with_context(|| format!("failed to read answer {}", path.display()))?
+        .to_lowercase();
+    if checklist.is_empty() {
+        return Ok(1.0);
+    }
+    let matched = checklist
+        .iter()
+        .filter(|item| answer.contains(&item.to_lowercase()))
+        .count();
+    Ok((matched as f64 / checklist.len() as f64).clamp(0.0, 1.0))
 }
 
 fn is_ignored_dir(path: &Path) -> bool {

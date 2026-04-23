@@ -19,6 +19,11 @@ fn exposes_required_pdf_tools() {
         "related_failures",
         "recent_decisions",
         "get_compact_diff",
+        "memory_list",
+        "memory_set",
+        "memory_get",
+        "memory_delete",
+        "memory_import_markdown",
     ] {
         assert!(
             tools.iter().any(|t| t.name == required),
@@ -98,6 +103,53 @@ fn tools_call_get_relevant_context_returns_pack_data() {
             .unwrap_or_default()
             .contains("query:")
     );
+}
+
+#[test]
+fn tools_call_memory_set_and_list_work() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    let set_response = roundtrip_once(
+        tmp.path(),
+        json!({
+            "jsonrpc":"2.0",
+            "id":4,
+            "method":"tools/call",
+            "params":{
+                "name":"memory_set",
+                "arguments":{
+                    "key":"testing.always_run",
+                    "body":"Run tests before completion.",
+                    "scope":"project",
+                    "source":"manual"
+                }
+            }
+        }),
+    );
+    assert_eq!(
+        set_response["result"]["directive"]["key"]
+            .as_str()
+            .unwrap_or_default(),
+        "testing.always_run"
+    );
+
+    let list_response = roundtrip_once(
+        tmp.path(),
+        json!({
+            "jsonrpc":"2.0",
+            "id":5,
+            "method":"tools/call",
+            "params":{
+                "name":"memory_list",
+                "arguments":{"scope":"project","limit":10}
+            }
+        }),
+    );
+    let directives = list_response["result"]["directives"]
+        .as_array()
+        .expect("directives array");
+    assert!(!directives.is_empty());
 }
 
 fn roundtrip_once(repo_root: &Path, rpc_payload: Value) -> Value {

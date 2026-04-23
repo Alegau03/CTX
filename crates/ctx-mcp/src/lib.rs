@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
-use ctx_core::{run_graph_query, run_pack, run_prune_diff};
+use ctx_core::{
+    run_graph_query, run_memory_delete, run_memory_get, run_memory_import_markdown,
+    run_memory_list, run_memory_set, run_pack, run_prune_diff,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
@@ -68,6 +71,26 @@ pub fn default_tools() -> Vec<McpTool> {
         McpTool {
             name: "get_compact_diff",
             description: "Return query-focused compact diff",
+        },
+        McpTool {
+            name: "memory_list",
+            description: "List graph-backed memory directives",
+        },
+        McpTool {
+            name: "memory_set",
+            description: "Create/update one graph memory directive",
+        },
+        McpTool {
+            name: "memory_get",
+            description: "Get one graph memory directive",
+        },
+        McpTool {
+            name: "memory_delete",
+            description: "Delete one graph memory directive",
+        },
+        McpTool {
+            name: "memory_import_markdown",
+            description: "Import AGENTS/CLAUDE/CODEX markdown rules into graph memory",
         },
     ]
 }
@@ -203,6 +226,71 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
             let decisions = read_recent_decisions(&cfg.repo_root, limit)?;
             Ok(json!({"decisions": decisions}))
         }
+        "memory_list" => {
+            let scope = args.get("scope").and_then(Value::as_str);
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize;
+            let directives = run_memory_list(&cfg.repo_root, scope, limit)?;
+            Ok(json!({"directives": directives}))
+        }
+        "memory_set" => {
+            let key = args
+                .get("key")
+                .and_then(Value::as_str)
+                .context("memory_set requires arguments.key")?;
+            let body = args
+                .get("body")
+                .and_then(Value::as_str)
+                .context("memory_set requires arguments.body")?;
+            let scope = args
+                .get("scope")
+                .and_then(Value::as_str)
+                .unwrap_or("project");
+            let source = args
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("manual");
+            let directive = run_memory_set(&cfg.repo_root, key, body, scope, source)?;
+            Ok(json!({"directive": directive}))
+        }
+        "memory_get" => {
+            let key = args
+                .get("key")
+                .and_then(Value::as_str)
+                .context("memory_get requires arguments.key")?;
+            let directive = run_memory_get(&cfg.repo_root, key)?;
+            Ok(json!({"directive": directive}))
+        }
+        "memory_delete" => {
+            let key = args
+                .get("key")
+                .and_then(Value::as_str)
+                .context("memory_delete requires arguments.key")?;
+            let deleted = run_memory_delete(&cfg.repo_root, key)?;
+            Ok(json!({"deleted": deleted}))
+        }
+        "memory_import_markdown" => {
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .context("memory_import_markdown requires arguments.path")?;
+            let scope = args
+                .get("scope")
+                .and_then(Value::as_str)
+                .unwrap_or("project");
+            let source = args
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("markdown");
+            let prefix = args.get("prefix").and_then(Value::as_str);
+            let report = run_memory_import_markdown(
+                &cfg.repo_root,
+                &resolve_path(&cfg.repo_root, path),
+                scope,
+                source,
+                prefix,
+            )?;
+            Ok(json!({"report": report}))
+        }
         "get_compact_diff" => {
             let query = args
                 .get("query")
@@ -250,6 +338,17 @@ fn resources_read(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value
                 }]
             }))
         }
+        "ctx://memory-directives" => {
+            let directives = run_memory_list(&cfg.repo_root, None, 100)?;
+            let text = serde_json::to_string_pretty(&directives).context("serialize directives")?;
+            Ok(json!({
+                "contents":[{
+                    "uri":"ctx://memory-directives",
+                    "mimeType":"application/json",
+                    "text": text
+                }]
+            }))
+        }
         _ => bail!("unknown resource uri: {uri}"),
     }
 }
@@ -266,6 +365,12 @@ fn default_resources() -> Vec<ResourceDescriptor> {
             uri: "ctx://recent-decisions",
             name: "recent_decisions",
             description: "Recent pruning and decision log entries",
+            mime_type: "application/json",
+        },
+        ResourceDescriptor {
+            uri: "ctx://memory-directives",
+            name: "memory_directives",
+            description: "Graph-backed operational directives replacing markdown habit files",
             mime_type: "application/json",
         },
     ]

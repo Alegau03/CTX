@@ -16,6 +16,7 @@ ctx-pack = { path = "../ctx-pack" }
 ctx-prune = { path = "../ctx-prune" }
 ctx-semantic = { path = "../ctx-semantic" }
 ctx-telemetry = { path = "../ctx-telemetry" }
+ctx-token = { path = "../ctx-token" }
 serde.workspace = true
 serde_json.workspace = true
 walkdir.workspace = true

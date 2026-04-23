@@ -56,6 +56,16 @@ CREATE TABLE IF NOT EXISTS notes (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS memory_directives (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  body TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'project',
+  source TEXT NOT NULL DEFAULT 'manual',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS snippets (
   id INTEGER PRIMARY KEY,
   file_id INTEGER,
@@ -84,6 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_failures_created_at ON failures(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
+CREATE INDEX IF NOT EXISTS idx_memory_scope_updated_at ON memory_directives(scope, updated_at);
 
 CREATE TRIGGER IF NOT EXISTS snippets_ai AFTER INSERT ON snippets BEGIN
   INSERT INTO snippets_fts(rowid, content) VALUES (new.id, new.content);

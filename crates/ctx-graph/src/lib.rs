@@ -26,6 +26,17 @@ pub struct FailureRecord {
     pub root_cause: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryDirective {
+    pub id: i64,
+    pub key: String,
+    pub body: String,
+    pub scope: String,
+    pub source: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 pub struct GraphStore {
     conn: Connection,
 }
@@ -367,6 +378,181 @@ impl GraphStore {
             out.push(row.context("failed to decode decision row")?);
         }
         Ok(out)
+    }
+
+    pub fn upsert_memory_directive(
+        &self,
+        key: &str,
+        body: &str,
+        scope: &str,
+        source: &str,
+    ) -> Result<i64> {
+        self.conn
+            .execute(
+                "INSERT INTO memory_directives(key, body, scope, source, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 ON CONFLICT(key) DO UPDATE SET
+                   body = excluded.body,
+                   scope = excluded.scope,
+                   source = excluded.source,
+                   updated_at = CURRENT_TIMESTAMP",
+                params![key, body, scope, source],
+            )
+            .context("failed to upsert memory directive")?;
+
+        self.conn
+            .query_row(
+                "SELECT id FROM memory_directives WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, i64>(0),
+            )
+            .context("failed to fetch memory directive id")
+    }
+
+    pub fn get_memory_directive(&self, key: &str) -> Result<Option<MemoryDirective>> {
+        self.conn
+            .query_row(
+                "SELECT id, key, body, scope, source, created_at, updated_at
+                 FROM memory_directives
+                 WHERE key = ?1",
+                params![key],
+                |row| {
+                    Ok(MemoryDirective {
+                        id: row.get(0)?,
+                        key: row.get(1)?,
+                        body: row.get(2)?,
+                        scope: row.get(3)?,
+                        source: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
+                },
+            )
+            .optional()
+            .context("failed to fetch memory directive by key")
+    }
+
+    pub fn list_memory_directives(
+        &self,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryDirective>> {
+        let mut out = Vec::new();
+        if let Some(scope_filter) = scope {
+            let mut stmt = self
+                .conn
+                .prepare(
+                    "SELECT id, key, body, scope, source, created_at, updated_at
+                     FROM memory_directives
+                     WHERE scope = ?1
+                     ORDER BY updated_at DESC, id DESC
+                     LIMIT ?2",
+                )
+                .context("failed to prepare scoped memory directives query")?;
+
+            let rows = stmt
+                .query_map(params![scope_filter, limit as i64], |row| {
+                    Ok(MemoryDirective {
+                        id: row.get(0)?,
+                        key: row.get(1)?,
+                        body: row.get(2)?,
+                        scope: row.get(3)?,
+                        source: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
+                })
+                .context("failed to query scoped memory directives")?;
+
+            for row in rows {
+                out.push(row.context("failed to decode scoped memory directive row")?);
+            }
+            return Ok(out);
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, key, body, scope, source, created_at, updated_at
+                 FROM memory_directives
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT ?1",
+            )
+            .context("failed to prepare memory directives query")?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(MemoryDirective {
+                    id: row.get(0)?,
+                    key: row.get(1)?,
+                    body: row.get(2)?,
+                    scope: row.get(3)?,
+                    source: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            })
+            .context("failed to query memory directives")?;
+
+        for row in rows {
+            out.push(row.context("failed to decode memory directive row")?);
+        }
+
+        Ok(out)
+    }
+
+    pub fn search_memory_directives(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<MemoryDirective>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return self.list_memory_directives(None, limit);
+        }
+
+        let terms = query
+            .split_whitespace()
+            .filter(|t| t.len() >= 2)
+            .map(|t| t.to_lowercase())
+            .collect::<Vec<_>>();
+
+        if terms.is_empty() {
+            return self.list_memory_directives(None, limit);
+        }
+
+        let mut weighted = Vec::new();
+        for directive in self.list_memory_directives(None, 500)? {
+            let hay = format!(
+                "{} {} {} {}",
+                directive.key, directive.body, directive.scope, directive.source
+            )
+            .to_lowercase();
+            let score = terms.iter().filter(|t| hay.contains(t.as_str())).count();
+            if score > 0 {
+                weighted.push((score, directive));
+            }
+        }
+
+        weighted.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| b.1.updated_at.cmp(&a.1.updated_at))
+                .then_with(|| b.1.id.cmp(&a.1.id))
+        });
+
+        Ok(weighted
+            .into_iter()
+            .take(limit)
+            .map(|(_, directive)| directive)
+            .collect())
+    }
+
+    pub fn delete_memory_directive(&self, key: &str) -> Result<bool> {
+        let affected = self
+            .conn
+            .execute("DELETE FROM memory_directives WHERE key = ?1", params![key])
+            .context("failed to delete memory directive")?;
+        Ok(affected > 0)
     }
 
     fn file_id(&self, file_path: &str) -> Result<Option<i64>> {

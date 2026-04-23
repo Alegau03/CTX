@@ -103,3 +103,59 @@ fn record_failure_and_recent_decisions_are_queryable() {
     assert!(failures.iter().any(|f| f.message.contains("auth")));
     assert!(decisions.iter().any(|d| d.contains("auth-fix")));
 }
+
+#[test]
+fn memory_directives_support_crud_and_search() {
+    let dir = tempdir().expect("tempdir");
+    let db = dir.path().join("graph.db");
+    let store = GraphStore::open(&db).expect("open");
+    store.init_schema().expect("schema");
+
+    let id = store
+        .upsert_memory_directive(
+            "testing.always_run",
+            "Every change must run targeted tests before completion.",
+            "project",
+            "manual",
+        )
+        .expect("upsert");
+    assert!(id > 0);
+
+    let loaded = store
+        .get_memory_directive("testing.always_run")
+        .expect("get")
+        .expect("existing");
+    assert_eq!(loaded.scope, "project");
+    assert_eq!(loaded.source, "manual");
+
+    store
+        .upsert_memory_directive(
+            "testing.always_run",
+            "Every change must run targeted and smoke tests before completion.",
+            "project",
+            "model",
+        )
+        .expect("update");
+
+    let hits = store
+        .search_memory_directives("smoke tests completion", 10)
+        .expect("search");
+    assert!(!hits.is_empty());
+    assert_eq!(hits[0].key, "testing.always_run");
+
+    let all = store
+        .list_memory_directives(Some("project"), 10)
+        .expect("list");
+    assert!(all.iter().any(|d| d.key == "testing.always_run"));
+
+    let deleted = store
+        .delete_memory_directive("testing.always_run")
+        .expect("delete");
+    assert!(deleted);
+    assert!(
+        store
+            .get_memory_directive("testing.always_run")
+            .expect("reload")
+            .is_none()
+    );
+}

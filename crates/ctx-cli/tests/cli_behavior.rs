@@ -198,7 +198,9 @@ fn help_command_prints_command_guide_with_examples() {
         .stdout(predicate::str::contains(
             "Example: ctx pack \"fix failing pytest in auth\" --json --attach /tmp/fail.txt",
         ))
-        .stdout(predicate::str::contains("ctx mcp serve --port 8765"));
+        .stdout(predicate::str::contains("ctx mcp serve --port 8765"))
+        .stdout(predicate::str::contains("ctx memory set"))
+        .stdout(predicate::str::contains("ctx benchmark memory-ab"));
 }
 
 #[test]
@@ -267,6 +269,195 @@ fn codex_wrapper_falls_back_to_printed_context_if_binary_missing() {
         .stderr(predicate::str::contains(
             "ctx warning: 'codex' not found in PATH",
         ));
+}
+
+#[test]
+fn memory_commands_support_set_get_list_delete() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "set",
+            "testing.always_run",
+            "Run targeted tests before completion.",
+            "--scope",
+            "project",
+            "--source",
+            "manual",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "memory directive upserted: key=testing.always_run",
+        ));
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "memory", "get", "testing.always_run"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"key\": \"testing.always_run\""));
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["memory", "list", "--scope", "project", "--limit", "10"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "testing.always_run [project:manual]",
+        ));
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["memory", "delete", "testing.always_run"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "memory directive deleted: testing.always_run",
+        ));
+}
+
+#[test]
+fn benchmark_memory_ab_outputs_comparison_metrics() {
+    let tmp = tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run tests before merge.\n- Fix root cause, never bypass failures.\n",
+    )
+    .expect("write markdown");
+    fs::write(
+        tmp.path().join("checklist.md"),
+        "- Run tests before merge.\n- Fix root cause, never bypass failures.\n",
+    )
+    .expect("write checklist");
+    fs::write(
+        tmp.path().join("markdown_answer.txt"),
+        "I will run tests before merge.",
+    )
+    .expect("write markdown answer");
+    fs::write(
+        tmp.path().join("graph_answer.txt"),
+        "I will run tests before merge and fix root cause, never bypass failures.",
+    )
+    .expect("write graph answer");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "set",
+            "tests.required",
+            "Run tests before merge.",
+            "--scope",
+            "project",
+            "--source",
+            "manual",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "--json",
+            "benchmark",
+            "memory-ab",
+            "run tests and fix root cause",
+            "--markdown",
+            "AGENTS.md",
+            "--limit",
+            "10",
+            "--checklist",
+            "checklist.md",
+            "--markdown-answer",
+            "markdown_answer.txt",
+            "--graph-answer",
+            "graph_answer.txt",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"markdown_tokens\""))
+        .stdout(predicate::str::contains("\"graph_memory_tokens\""))
+        .stdout(predicate::str::contains("\"token_reduction_pct\""))
+        .stdout(predicate::str::contains("\"quality_winner\""));
+}
+
+#[test]
+fn memory_import_and_export_commands_work_with_markdown_files() {
+    let tmp = tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run tests before merge.\n- Fix root cause.\n",
+    )
+    .expect("write markdown");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "import",
+            "--from",
+            "AGENTS.md",
+            "--scope",
+            "project",
+            "--source",
+            "markdown",
+            "--prefix",
+            "agents",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("imported"));
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "export",
+            "--to",
+            "AGENTS.generated.md",
+            "--scope",
+            "project",
+            "--limit",
+            "50",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("exported"));
+
+    let exported = fs::read_to_string(tmp.path().join("AGENTS.generated.md")).expect("read export");
+    assert!(exported.contains("Graph Memory Directives"));
 }
 
 fn free_port() -> u16 {

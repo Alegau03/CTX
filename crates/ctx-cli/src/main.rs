@@ -5,8 +5,10 @@ use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
 use ctx_adapters::{Agent, execute_invocation, prepare_invocation};
 use ctx_core::{
-    init_repo, load_or_default_config, run_explain, run_graph_query, run_index, run_pack,
-    run_prune_diff, run_prune_logs, run_retrieve,
+    init_repo, load_or_default_config, run_explain, run_graph_query, run_index,
+    run_memory_ab_benchmark, run_memory_delete, run_memory_export_markdown, run_memory_get,
+    run_memory_import_markdown, run_memory_list, run_memory_set, run_pack, run_prune_diff,
+    run_prune_logs, run_retrieve,
 };
 use ctx_mcp::{McpServerConfig, serve_http};
 
@@ -75,6 +77,14 @@ enum Commands {
         #[command(subcommand)]
         command: McpCommands,
     },
+    Memory {
+        #[command(subcommand)]
+        command: MemoryCommands,
+    },
+    Benchmark {
+        #[command(subcommand)]
+        command: BenchmarkCommands,
+    },
     Stats,
     Help,
 }
@@ -102,6 +112,42 @@ enum McpCommands {
     Serve(McpServeArgs),
 }
 
+#[derive(Debug, Subcommand)]
+enum MemoryCommands {
+    Set(MemorySetArgs),
+    Import(MemoryImportArgs),
+    Export(MemoryExportArgs),
+    Get {
+        key: String,
+    },
+    List {
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    Delete {
+        key: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum BenchmarkCommands {
+    MemoryAb {
+        query: String,
+        #[arg(long)]
+        markdown: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long)]
+        checklist: Option<PathBuf>,
+        #[arg(long)]
+        markdown_answer: Option<PathBuf>,
+        #[arg(long)]
+        graph_answer: Option<PathBuf>,
+    },
+}
+
 #[derive(Debug, Args)]
 struct PruneArgs {
     #[arg(long, default_value_t = 200)]
@@ -123,6 +169,40 @@ struct McpServeArgs {
 
     #[arg(long, default_value_t = false)]
     once: bool,
+}
+
+#[derive(Debug, Args)]
+struct MemorySetArgs {
+    key: String,
+    body: String,
+    #[arg(long, default_value = "project")]
+    scope: String,
+    #[arg(long, default_value = "manual")]
+    source: String,
+}
+
+#[derive(Debug, Args)]
+struct MemoryImportArgs {
+    #[arg(long)]
+    from: PathBuf,
+    #[arg(long, default_value = "project")]
+    scope: String,
+    #[arg(long, default_value = "markdown")]
+    source: String,
+    #[arg(long)]
+    prefix: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct MemoryExportArgs {
+    #[arg(long)]
+    to: PathBuf,
+    #[arg(long)]
+    scope: Option<String>,
+    #[arg(long, default_value_t = 200)]
+    limit: usize,
+    #[arg(long)]
+    title: Option<String>,
 }
 
 fn main() {
@@ -257,6 +337,136 @@ fn run() -> Result<()> {
                     port,
                     once: args.once,
                 })?;
+            }
+        },
+        Commands::Memory { command } => match command {
+            MemoryCommands::Set(args) => {
+                let directive =
+                    run_memory_set(&repo_root, &args.key, &args.body, &args.scope, &args.source)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&directive)?);
+                } else {
+                    println!(
+                        "memory directive upserted: key={} scope={} source={}",
+                        directive.key, directive.scope, directive.source
+                    );
+                }
+            }
+            MemoryCommands::Import(args) => {
+                let report = run_memory_import_markdown(
+                    &repo_root,
+                    &args.from,
+                    &args.scope,
+                    &args.source,
+                    args.prefix.as_deref(),
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!(
+                        "imported {} directives from {}",
+                        report.imported, report.markdown_path
+                    );
+                }
+            }
+            MemoryCommands::Export(args) => {
+                let report = run_memory_export_markdown(
+                    &repo_root,
+                    &args.to,
+                    args.scope.as_deref(),
+                    args.limit,
+                    args.title.as_deref(),
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!(
+                        "exported {} directives to {}",
+                        report.directives, report.output_path
+                    );
+                }
+            }
+            MemoryCommands::Get { key } => {
+                let result = run_memory_get(&repo_root, &key)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else if let Some(directive) = result {
+                    println!(
+                        "key={}\nscope={}\nsource={}\nbody={}",
+                        directive.key, directive.scope, directive.source, directive.body
+                    );
+                } else {
+                    println!("memory directive not found");
+                }
+            }
+            MemoryCommands::List { scope, limit } => {
+                let items = run_memory_list(&repo_root, scope.as_deref(), limit)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                } else if items.is_empty() {
+                    println!("no memory directives");
+                } else {
+                    for item in items {
+                        println!(
+                            "{} [{}:{}] {}",
+                            item.key, item.scope, item.source, item.body
+                        );
+                    }
+                }
+            }
+            MemoryCommands::Delete { key } => {
+                let deleted = run_memory_delete(&repo_root, &key)?;
+                if deleted {
+                    println!("memory directive deleted: {key}");
+                } else {
+                    println!("memory directive not found");
+                }
+            }
+        },
+        Commands::Benchmark { command } => match command {
+            BenchmarkCommands::MemoryAb {
+                query,
+                markdown,
+                limit,
+                checklist,
+                markdown_answer,
+                graph_answer,
+            } => {
+                let result = run_memory_ab_benchmark(
+                    &repo_root,
+                    &query,
+                    &markdown,
+                    limit,
+                    checklist.as_deref(),
+                    markdown_answer.as_deref(),
+                    graph_answer.as_deref(),
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    println!("query: {}", result.query);
+                    println!("markdown_path: {}", result.markdown_path);
+                    println!("markdown_tokens: {}", result.markdown_tokens);
+                    println!("graph_memory_tokens: {}", result.graph_memory_tokens);
+                    println!("token_reduction_pct: {:.2}", result.token_reduction_pct);
+                    println!(
+                        "query_term_coverage markdown={:.2} graph={:.2}",
+                        result.markdown_query_term_coverage, result.graph_query_term_coverage
+                    );
+                    println!(
+                        "directive_units markdown_lines={} graph_directives={}",
+                        result.markdown_directive_lines, result.graph_directives_count
+                    );
+                    if let (Some(md), Some(gr)) =
+                        (result.markdown_success_rate, result.graph_success_rate)
+                    {
+                        println!("success_rate markdown={:.2} graph={:.2}", md, gr);
+                    }
+                    if let Some(winner) = result.quality_winner.as_deref() {
+                        let delta = result.quality_delta_pct.unwrap_or(0.0);
+                        println!("quality_winner: {} (delta_pct={:.2})", winner, delta);
+                    }
+                }
             }
         },
         Commands::Stats => {
@@ -401,7 +611,35 @@ What it does: Starts local MCP-compatible RPC server on localhost.
 Example: ctx mcp serve --port 8765
 Example: ctx mcp serve --port 8765 --once
 
-16) ctx stats
+16) ctx memory set <key> <body> [--scope s] [--source src]
+What it does: Upserts a graph-backed memory directive replacing markdown habit files.
+Example: ctx memory set testing.always_run "Run targeted tests before completion" --scope project --source manual
+
+17) ctx memory get <key>
+What it does: Reads one memory directive from graph memory.
+Example: ctx memory get testing.always_run
+
+18) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
+What it does: Imports markdown habit files (AGENTS/CLAUDE/CODEX) into graph memory directives.
+Example: ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
+
+19) ctx memory export --to <file> [--scope s] [--limit n]
+What it does: Exports graph memory directives back to markdown for compatibility or auditing.
+Example: ctx memory export --to AGENTS.generated.md --scope project --limit 200
+
+20) ctx memory list [--scope s] [--limit n]
+What it does: Lists recent memory directives (optionally filtered by scope).
+Example: ctx memory list --scope project --limit 10
+
+21) ctx memory delete <key>
+What it does: Deletes one memory directive from graph memory.
+Example: ctx memory delete testing.always_run
+
+22) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
+What it does: Compares graph memory directives vs markdown rules on token cost, query coverage and optional quality/success via checklist + answer files.
+Example: ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENTS.md --limit 20
+
+23) ctx stats
 What it does: Prints latest local telemetry snapshot from .ctx/stats/latest.json.
 Example: ctx stats
 

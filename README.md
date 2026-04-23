@@ -10,12 +10,14 @@ Implementazione attiva basata su:
 
 Fondamenta già implementate:
 - workspace Rust multi-crate
-- CLI estesa (`init`, `index`, `reindex`, `graph build/query/rebuild`, `prune`, `pack`, `explain`, `retrieve`, wrappers, `stats`, `mcp serve`)
+- CLI estesa (`init`, `index`, `reindex`, `graph build/query/rebuild`, `prune`, `pack`, `explain`, `retrieve`, wrappers, `memory`, `benchmark`, `stats`, `mcp serve`)
 - config `.ctx/config.toml`
 - pruning logs/diff
 - context packing con budget e priorità
 - graph SQLite con simboli, edge, snippet FTS, failure/decision memory
 - retrieval ibrido (graph + FTS + semantic ranking)
+- memory directives complete nel graph (`ctx memory set/get/list/delete/import/export`)
+- benchmark A/B completo memory vs markdown (`ctx benchmark memory-ab`) con token, query coverage e quality/success scoring via checklist
 - adapter runtime reali per `codex` e `opencode` (invocazione CLI + fallback)
 - MCP server locale operativo su `/rpc`
 - guardrail sicurezza (blocchi su file sensibili) + audit log
@@ -125,6 +127,13 @@ Comportamento atteso:
 | `ctx codex "..."` | Costruisce context pack e invoca Codex CLI con prompt + contesto compattato | `ctx codex "review risky diff"` | se `codex` è in PATH: esecuzione reale; altrimenti fallback con prompt pronto |
 | `ctx claude "..."` | Wrapper adapter claude con contesto compattato | `ctx claude "explain flaky test"` | output con prefisso `adapter=claude` |
 | `ctx opencode run "..."` | Costruisce context pack e invoca OpenCode CLI (`opencode run`) con prompt + contesto compattato | `ctx opencode run "explain this diff"` | se `opencode` è in PATH: esecuzione reale; altrimenti fallback con prompt pronto |
+| `ctx memory set <key> <body> --scope project --source manual` | Inserisce/aggiorna una direttiva comportamentale nel grafo locale | `ctx memory set testing.always_run "Run targeted tests before completion." --scope project --source manual` | direttiva salvata nel graph memory |
+| `ctx memory get <key>` | Legge una direttiva memory specifica | `ctx memory get testing.always_run` | stampa key/scope/source/body o `not found` |
+| `ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents` | Importa direttive da markdown (`AGENTS.md`/`CLAUDE.md`/`CODEX.md`) nel graph memory | `ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents` | direttive estratte e persistite con report import |
+| `ctx memory export --to AGENTS.generated.md --scope project --limit 200` | Esporta il graph memory in markdown compatibile/auditabile | `ctx memory export --to AGENTS.generated.md --scope project --limit 200` | file markdown generato con tutte le direttive |
+| `ctx memory list --scope project --limit 10` | Elenca le direttive memory recenti | `ctx memory list --scope project --limit 10` | lista direttive con metadata |
+| `ctx memory delete <key>` | Rimuove una direttiva memory | `ctx memory delete testing.always_run` | conferma eliminazione |
+| `ctx benchmark memory-ab "<query>" --markdown AGENTS.md --limit 20 [--checklist file --markdown-answer file --graph-answer file]` | Benchmark A/B completo: token, query coverage e (opzionale) quality/success scoring su checklist | `ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENTS.md --limit 20 --checklist quality-checklist.md --markdown-answer md.txt --graph-answer graph.txt` | output con `markdown_tokens`, `graph_memory_tokens`, `token_reduction_pct`, `quality_winner` |
 | `ctx stats` | Legge metriche locali ultimo run | dopo `ctx pack ...`, esegui `ctx stats` | JSON con `original_tokens`, `packed_tokens`, `reduction_pct` |
 | `ctx pack "..." --attach .env` | Security guardrail: blocca allegati sensibili | `ctx pack "fix auth" --attach .env` | errore esplicito di blocco |
 | `ctx mcp serve --port 8765 --once` | Avvia server MCP e gestisce una sola request | avvia e invia una RPC | risposta valida e chiusura pulita |
@@ -167,10 +176,10 @@ Atteso:
 | Token | `cargo test -p ctx-token` | stima token deterministica |
 | AST | `cargo test -p ctx-ast` | estrazione simboli tree-sitter + slicing |
 | Semantic | `cargo test -p ctx-semantic` | formula + ranking ibrido + dedup/adaptive threshold |
-| Graph | `cargo test -p ctx-graph` | simboli/edge/snippet FTS/failure/decision |
-| Core | `cargo test -p ctx-core` | index+pack+retrieval+guardrail |
-| CLI | `cargo test -p ctx-cli` | e2e comandi + mcp serve |
-| MCP | `cargo test -p ctx-mcp` | roundtrip RPC server |
+| Graph | `cargo test -p ctx-graph` | simboli/edge/snippet FTS/failure/decision + memory directives CRUD/search |
+| Core | `cargo test -p ctx-core` | index+pack+retrieval+guardrail + memory import/export + benchmark quality/success scoring |
+| CLI | `cargo test -p ctx-cli` | e2e comandi + mcp serve + memory/benchmark/import/export commands |
+| MCP | `cargo test -p ctx-mcp` | roundtrip RPC server + memory MCP tools |
 | Telemetry | `cargo test -p ctx-telemetry` | stats e benchmark summary/report |
 
 ## Roadmap & Release Plan
@@ -179,7 +188,7 @@ Source of truth:
 - `docs/superpowers/plans/2026-04-23-ctx-runtime-engine.md`
 - `CTX_description.pdf`
 
-### Task Status Matrix (1-19)
+### Task Status Matrix (1-20)
 
 | Task | Area | Status | Note |
 |---|---|---|---|
@@ -202,6 +211,7 @@ Source of truth:
 | 17 | MVP phase gates | Planned | formalizzazione criteri release |
 | 18 | Demo/community assets | Planned | demo GIF/script + messaging finale |
 | 19 | Future extensions backlog | Planned | backlog post-MVP da consolidare |
+| 20 | Graph Memory Replacement Validation | Done | graph memory completo (CRUD/import/export) + benchmark A/B completo (token, coverage, checklist-based quality/success scoring) |
 
 ### Ordered Execution Queue (Now -> Final GitHub Release)
 
@@ -223,8 +233,9 @@ Source of truth:
 16. Completare packaging release (binari macOS/Linux, script release, smoke test installazione).
 17. Completare distribuzione Homebrew/tap e docs install (`cargo`, binary release, brew) con first-run checks.
 18. Rifinire README finale: stato reale, test matrix completa, limiti noti, esempi finali.
-19. Eseguire QA finale sugli scenari PDF (debug, refactor, explain, MCP retrieval, wrappers codex/opencode/claude).
-20. Pubblicazione GitHub: tag `v0.1.0`, changelog, release notes, upload artefatti, template issue e backlog post-MVP.
+19. Pubblicare benchmark suite completa del task “Graph Memory Replacement” su repository di esempio multipli con report versionati.
+20. Eseguire QA finale sugli scenari PDF (debug, refactor, explain, MCP retrieval, wrappers codex/opencode/claude).
+21. Pubblicazione GitHub: tag `v0.1.0`, changelog, release notes, upload artefatti, template issue e backlog post-MVP.
 
 ## Notes
 

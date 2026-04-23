@@ -236,6 +236,7 @@ dependencies = [
  "ctx-prune",
  "ctx-semantic",
  "ctx-telemetry",
+ "ctx-token",
  "serde",
  "serde_json",
  "tempfile",
