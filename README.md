@@ -173,52 +173,58 @@ Atteso:
 | MCP | `cargo test -p ctx-mcp` | roundtrip RPC server |
 | Telemetry | `cargo test -p ctx-telemetry` | stats e benchmark summary/report |
 
-## Roadmap
+## Roadmap & Release Plan
 
-Stato task dal piano (`docs/superpowers/plans/2026-04-23-ctx-runtime-engine.md`):
+Source of truth:
+- `docs/superpowers/plans/2026-04-23-ctx-runtime-engine.md`
+- `CTX_description.pdf`
 
-- [x] Task 1: bootstrap workspace e skeleton
-- [x] Task 2: CLI surface completa
-- [x] Task 3: config system `.ctx/config.toml`
-- [x] Task 4: query intake + signal collection (base)
-- [x] Task 5: heuristic pruner + parser base logs/diff
-- [x] Task 6: syntax & structure analyzer (tree-sitter + slicing)
-- [x] Task 7: semantic relevance engine (ranking ibrido locale)
-- [x] Task 8: knowledge graph engine (schema, simboli, edge, failure, decision, snippets FTS)
-- [x] Task 9: retrieval layer ibrido (graph + FTS + semantic)
-- [x] Task 10: context rewriter/packer (baseline priorità+budget)
-- [x] Task 11: invocation + telemetry locale (codex/opencode real invocation + fallback, claude pending)
-- [x] Task 12: integration modes principali (wrapper/pipe/index/rebuild)
-- [x] Task 13: MCP server operativo
-- [x] Task 14: sicurezza/privacy baseline (guardrail + audit)
-- [ ] Task 15: packaging/install distribuzione completa (in progress)
-- [ ] Task 16: benchmark harness full end-to-end (in progress)
-- [ ] Task 17: fase MVP formalizzata con gate per release
-- [ ] Task 18: demo/virality assets completi (GIF + script pubblico)
-- [ ] Task 19: future extensions backlog operativo e prioritizzato
+### Task Status Matrix (1-19)
 
-## Execution Order To Final GitHub Release
+| Task | Area | Status | Note |
+|---|---|---|---|
+| 1 | Workspace bootstrap | Done | Struttura multi-crate pronta |
+| 2 | CLI surface | Done | Comandi principali disponibili |
+| 3 | Config system | Done | `.ctx/config.toml` e bootstrap runtime |
+| 4 | Query intake | Done | Intent/query baseline operativi |
+| 5 | Pruning/parsers baseline | Done | `logs`/`diff` euristici operativi |
+| 6 | AST analyzer | Done | tree-sitter + slicing (Rust/Python baseline) |
+| 7 | Semantic engine | Done (baseline) | ranking ibrido locale, ONNX reale ancora pending |
+| 8 | Knowledge graph | Done | schema/edge/snippet/failure/decision |
+| 9 | Retrieval layer | Done | graph + FTS + semantic ranking |
+| 10 | Packer | Done (baseline) | budget/priorità operative, advanced packing pending |
+| 11 | Invocation + telemetry | Partial | codex/opencode real invocation done, claude + runs metadata pending |
+| 12 | Integration modes | Done (baseline) | wrapper/pipe/index/rebuild operativi |
+| 13 | MCP server mode | Done (baseline) | server locale e tool core operativi |
+| 14 | Security/privacy controls | Done (baseline) | guardrail + audit log locale |
+| 15 | Installation/packaging | In Progress | release artifacts/Homebrew/pipeline da chiudere |
+| 16 | Benchmarking framework | In Progress | harness/report pubblicabile da chiudere |
+| 17 | MVP phase gates | Planned | formalizzazione criteri release |
+| 18 | Demo/community assets | Planned | demo GIF/script + messaging finale |
+| 19 | Future extensions backlog | Planned | backlog post-MVP da consolidare |
 
-1. Chiudere `Task 11` completamente: salvare metadati invocazioni in tabella `runs` (agent, durata, esito, token before/after, fallback yes/no).
-2. Implementare adapter CLI `Claude` reale (`ctx claude ...`) con stesso modello `prepare + execute + fallback` di Codex/OpenCode.
-3. Aggiungere alias workflow del PDF: `ctx ask ...` e `ctx wrap <agent> --prompt ...` (con test E2E).
-4. Completare `hook mode` operativo (`ctx hook ...`) per pre-prompt processing reale, non solo utility function.
+### Ordered Execution Queue (Now -> Final GitHub Release)
+
+1. Chiudere `Task 11`: metadati invocazioni in tabella `runs` (agent, durata, esito, token before/after, fallback yes/no).
+2. Implementare adapter CLI `Claude` reale (`ctx claude ...`) con `prepare + execute + fallback`.
+3. Aggiungere alias workflow del PDF: `ctx ask ...` e `ctx wrap <agent> --prompt ...` con test E2E.
+4. Completare `hook mode` operativo (`ctx hook ...`) per pre-prompt processing reale.
 5. Completare parser prioritari mancanti: `pytest`, Python traceback, `git diff`, `git status`, `tsc`, `eslint`, `ruff`, `mypy`, `cargo`, `go test`.
-6. Portare i parser in formato estendibile (framework/plugin parser packs) con test di regressione per ogni parser.
-7. Estendere AST/symbol extraction a `TS/JS` (MVP richiesto dal piano/PDF) e consolidare coverage linguaggi.
-8. Migliorare extraction dipendenze/call graph oltre le euristiche attuali (incrementale, più preciso su cross-file).
-9. Completare packer avanzato: `recent diff`, `immediate dependencies`, `task memory`, `failure memory` strutturata, `secondary docs`.
-10. Aggiungere explainability del packer (`included/excluded + reason`) in output macchina (`--json`) e umano.
+6. Rendere i parser estendibili come parser packs con test di regressione dedicati.
+7. Estendere AST/symbol extraction a `TS/JS` e consolidare coverage linguaggi MVP.
+8. Migliorare dependency/call graph oltre le euristiche attuali (cross-file più preciso).
+9. Completare advanced packer: `recent diff`, `immediate dependencies`, `task memory`, `failure memory` strutturata, `secondary docs`.
+10. Aggiungere explainability packer (`included/excluded + reason`) in output umano e `--json`.
 11. Implementare backend semantic `ONNX` reale con feature flag e fallback hash locale.
-12. Rifinire MCP “plug-and-play”: compatibilità piena tool/resources, transport standard aggiuntivi oltre HTTP JSON-RPC custom, preset integrazione agent.
-13. Completare hardening sicurezza/privacy: telemetry opt-in rigoroso, ignore rules sensibili configurabili, audit decisioni include/exclude verificabile.
-14. Chiudere benchmark harness end-to-end (`repos.yaml`, `tasks/*.yaml`, runner, KPI completi, report markdown pubblicabile).
-15. Eseguire benchmark reali e produrre report versionato da includere nel repository.
-16. Completare packaging release: binari macOS/Linux, script release, smoke test installazione.
-17. Completare distribuzione Homebrew/tap + documentazione install (`cargo`, binary release, brew) con test first-run (`ctx init`, `ctx index`, `ctx stats`).
-18. Aggiornare README finale: stato reale, roadmap con check, sezione test completa, MCP purpose, limiti noti, esempi veri per ogni comando.
-19. Eseguire QA finale su scenari del PDF (debug, refactor large repo, explain, MCP retrieval, codex/opencode/claude wrappers).
-20. Preparare pubblicazione GitHub: tag `v0.1.0`, changelog, release notes, upload artefatti, issue templates/backlog post-MVP.
+12. Rifinire MCP “plug-and-play” (transport standard aggiuntivi + preset integrazione agent).
+13. Completare hardening sicurezza/privacy (telemetry opt-in rigoroso, ignore rules sensibili, audit include/exclude verificabile).
+14. Chiudere benchmark harness end-to-end (`repos.yaml`, `tasks/*.yaml`, runner, KPI, report markdown).
+15. Eseguire benchmark reali e versionare i report nel repository.
+16. Completare packaging release (binari macOS/Linux, script release, smoke test installazione).
+17. Completare distribuzione Homebrew/tap e docs install (`cargo`, binary release, brew) con first-run checks.
+18. Rifinire README finale: stato reale, test matrix completa, limiti noti, esempi finali.
+19. Eseguire QA finale sugli scenari PDF (debug, refactor, explain, MCP retrieval, wrappers codex/opencode/claude).
+20. Pubblicazione GitHub: tag `v0.1.0`, changelog, release notes, upload artefatti, template issue e backlog post-MVP.
 
 ## Notes
 
