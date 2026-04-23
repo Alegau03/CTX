@@ -1,0 +1,24 @@
+[package]
+name = "ctx-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ctx-config = { path = "../ctx-config" }
+ctx-ast = { path = "../ctx-ast" }
+ctx-graph = { path = "../ctx-graph" }
+ctx-intake = { path = "../ctx-intake" }
+ctx-pack = { path = "../ctx-pack" }
+ctx-prune = { path = "../ctx-prune" }
+ctx-semantic = { path = "../ctx-semantic" }
+ctx-telemetry = { path = "../ctx-telemetry" }
+serde.workspace = true
+serde_json.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

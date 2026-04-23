@@ -1,0 +1,10 @@
+task_id: debug-auth-failure
+category: debug
+query: fix failing pytest in auth
+expected_signals:
+  - traceback root cause
+  - related auth symbols
+  - failing tests
+kpi_targets:
+  token_reduction_pct: 60
+  retrieval_precision_at_k: 0.60

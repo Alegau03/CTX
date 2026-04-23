@@ -1,0 +1,20 @@
+[package]
+name = "ctx-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ctx-core = { path = "../ctx-core" }
+serde.workspace = true
+serde_json.workspace = true
+tiny_http = "0.12"
+walkdir.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+ctx-config = { path = "../ctx-config" }
+tempfile.workspace = true

@@ -1,0 +1,30 @@
+[general]
+repo_root = "."
+default_budget = 6000
+agent = "codex"
+
+[pruning]
+collapse_success_logs = true
+keep_imports = true
+keep_public_signatures = true
+max_log_lines = 200
+
+[semantic]
+enabled = true
+backend = "onnx"
+model = "local-mini-embed"
+max_chunks = 64
+
+[graph]
+enabled = true
+store = ".ctx/graph.db"
+index_tests = true
+index_docs = true
+
+[mcp]
+enabled = true
+port = 8765
+
+[security]
+exclude_sensitive_files = true
+sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
