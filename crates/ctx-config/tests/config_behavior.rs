@@ -52,6 +52,28 @@ default_budget = 0
 }
 
 #[test]
+fn semantic_config_supports_onnx_paths_and_fallback_policy() {
+    let parsed = CtxConfig::from_toml_str(
+        r#"
+[semantic]
+enabled = true
+backend = "onnx"
+model = "models/embed.onnx"
+vocab = "models/vocab.txt"
+max_chunks = 12
+allow_fallback = false
+"#,
+    )
+    .expect("semantic config should parse");
+
+    assert_eq!(parsed.semantic.backend, "onnx");
+    assert_eq!(parsed.semantic.model, "models/embed.onnx");
+    assert_eq!(parsed.semantic.vocab.as_deref(), Some("models/vocab.txt"));
+    assert_eq!(parsed.semantic.max_chunks, 12);
+    assert!(!parsed.semantic.allow_fallback);
+}
+
+#[test]
 fn template_config_is_valid() {
     let template = std::fs::read_to_string("../../templates/config.default.toml")
         .expect("template config should exist");

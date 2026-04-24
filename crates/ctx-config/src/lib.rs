@@ -57,6 +57,16 @@ impl CtxConfig {
             bail!("semantic.max_chunks must be greater than 0 when semantic is enabled")
         }
 
+        let semantic_backend = self.semantic.backend.trim().to_lowercase();
+        if self.semantic.enabled
+            && !matches!(
+                semantic_backend.as_str(),
+                "local" | "local_hash" | "hash" | "onnx" | "onnx_runtime"
+            )
+        {
+            bail!("semantic.backend must be one of: local_hash, onnx")
+        }
+
         if self.mcp.port == 0 {
             bail!("mcp.port must be greater than 0")
         }
@@ -113,7 +123,9 @@ pub struct SemanticConfig {
     pub enabled: bool,
     pub backend: String,
     pub model: String,
+    pub vocab: Option<String>,
     pub max_chunks: usize,
+    pub allow_fallback: bool,
 }
 
 impl Default for SemanticConfig {
@@ -122,7 +134,9 @@ impl Default for SemanticConfig {
             enabled: true,
             backend: "onnx".to_string(),
             model: "local-mini-embed".to_string(),
+            vocab: None,
             max_chunks: 64,
+            allow_fallback: true,
         }
     }
 }

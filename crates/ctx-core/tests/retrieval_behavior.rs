@@ -52,3 +52,64 @@ fn retrieval_respects_limit() {
     let hits = run_retrieve(tmp.path(), "function", 2).expect("retrieve");
     assert!(hits.len() <= 2);
 }
+
+#[test]
+fn retrieval_uses_semantic_config_and_reports_onnx_fallback() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::write(
+        tmp.path().join(".ctx/config.toml"),
+        r#"
+[general]
+repo_root = "."
+default_budget = 6000
+agent = "codex"
+
+[pruning]
+collapse_success_logs = true
+keep_imports = true
+keep_public_signatures = true
+max_log_lines = 200
+
+[semantic]
+enabled = true
+backend = "onnx"
+model = "models/missing.onnx"
+vocab = "models/vocab.txt"
+max_chunks = 8
+allow_fallback = true
+
+[graph]
+enabled = true
+store = ".ctx/graph.db"
+index_tests = true
+index_docs = true
+
+[mcp]
+enabled = true
+port = 8765
+
+[security]
+exclude_sensitive_files = true
+sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
+"#,
+    )
+    .expect("write config");
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        "fn validate_refresh_token() -> bool { true }\n",
+    )
+    .expect("write");
+
+    run_index(tmp.path(), &[]).expect("index");
+    let hits = run_retrieve(tmp.path(), "fix refresh token", 5).expect("retrieve");
+
+    assert!(!hits.is_empty());
+    assert!(
+        hits.iter()
+            .any(|hit| hit.reason.contains("fallback_from=onnx"))
+    );
+}

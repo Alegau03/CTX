@@ -158,6 +158,9 @@ struct PruneArgs {
 struct PruneDiffArgs {
     query: Option<String>,
 
+    #[arg(long = "query")]
+    query_flag: Option<String>,
+
     #[arg(long, default_value_t = 200)]
     max_lines: usize,
 }
@@ -257,7 +260,7 @@ fn run() -> Result<()> {
             }
             PruneCommands::Diff(args) => {
                 let input = read_stdin_all()?;
-                let query = args.query.unwrap_or_default();
+                let query = args.query_flag.or(args.query).unwrap_or_default();
                 let report = run_prune_diff(&input, &query, args.max_lines);
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&report)?);
@@ -578,12 +581,12 @@ Example: ctx graph query auth
 What it does: Removes repetitive/noisy log lines and keeps diagnostic signal.
 Example: pytest -q 2>&1 | ctx prune logs
 
-8) ctx prune diff [query]
+8) ctx prune diff [query] [--query q]
 What it does: Compacts diffs and keeps query-relevant hunks.
-Example: git diff | ctx prune diff "refresh token"
+Example: git diff | ctx prune diff --query "refresh token"
 
 9) ctx pack <query> [--json] [--attach file] [--budget n]
-What it does: Creates a compact context package under a token budget.
+What it does: Creates an advanced compact context package with strict priorities, included/excluded reasons and a saved pack artifact.
 Example: ctx pack "fix failing pytest in auth" --json --attach /tmp/fail.txt
 
 10) ctx explain <query>

@@ -36,6 +36,33 @@ fn prune_logs_reads_stdin_and_outputs_error_lines() {
 }
 
 #[test]
+fn prune_diff_accepts_query_flag_and_keeps_matching_hunks() {
+    let diff = r#"
+diff --git a/src/auth.rs b/src/auth.rs
+--- a/src/auth.rs
++++ b/src/auth.rs
+@@ -1,1 +1,1 @@
+-fn old_auth() {}
++fn validate_refresh_token() {}
+diff --git a/src/other.rs b/src/other.rs
+--- a/src/other.rs
++++ b/src/other.rs
+@@ -1,1 +1,1 @@
+-fn old() {}
++fn noop() {}
+"#;
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["prune", "diff", "--query", "refresh token"])
+        .write_stdin(diff)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("validate_refresh_token"))
+        .stdout(predicate::str::contains("noop").not());
+}
+
+#[test]
 fn pack_json_outputs_expected_shape() {
     let tmp = tempdir().expect("tempdir");
     fs::write(tmp.path().join("fail.txt"), "Traceback: boom").expect("write");

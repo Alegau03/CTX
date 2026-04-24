@@ -13,7 +13,9 @@ max_log_lines = 200
 enabled = true
 backend = "onnx"
 model = "local-mini-embed"
+vocab = ""
 max_chunks = 64
+allow_fallback = true
 
 [graph]
 enabled = true

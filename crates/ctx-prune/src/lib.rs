@@ -1,6 +1,7 @@
-use regex::Regex;
+mod heuristic;
+mod parsers;
+
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PruneReport {
@@ -11,140 +12,54 @@ pub struct PruneReport {
     pub excluded: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct Candidate {
+    pub order: usize,
+    pub line: String,
+    pub reason: String,
+    pub priority: u8,
+}
+
+impl Candidate {
+    pub(crate) fn new(
+        order: usize,
+        line: impl Into<String>,
+        reason: impl Into<String>,
+        priority: u8,
+    ) -> Self {
+        Self {
+            order,
+            line: line.into(),
+            reason: reason.into(),
+            priority,
+        }
+    }
+}
+
+/// Prune noisy command output while preserving diagnostic root-cause signals.
+///
+/// The implementation is deterministic and parser-pack based: known tool outputs
+/// are recognized first, then a conservative heuristic fallback keeps generic
+/// error/warning/failure lines. The output stays line-oriented so it can be piped
+/// directly into agent prompts.
 pub fn prune_logs(input: &str, max_lines: usize) -> PruneReport {
-    let mut seen = HashSet::new();
-    let mut kept = Vec::new();
-    let mut excluded = Vec::new();
-    let mut included = Vec::new();
+    let mut candidates = parsers::parse_log_candidates(input);
 
-    let keep_patterns = [
-        Regex::new(r"(?i)\berror\b").expect("valid regex"),
-        Regex::new(r"(?i)\bfail(ed|ure)?\b").expect("valid regex"),
-        Regex::new(r"(?i)traceback").expect("valid regex"),
-        Regex::new(r"(?i)exception").expect("valid regex"),
-        Regex::new(r"(?i)warning").expect("valid regex"),
-    ];
-
-    for line in input.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        if !seen.insert(line.to_string()) {
-            excluded.push(format!("duplicate line removed: {line}"));
-            continue;
-        }
-
-        let matched = keep_patterns.iter().any(|rx| rx.is_match(line));
-        if matched {
-            included.push(format!("kept diagnostic signal: {line}"));
-            kept.push(line.to_string());
-        } else {
-            excluded.push(format!("noise line removed: {line}"));
-        }
+    if candidates.is_empty() {
+        candidates = heuristic::fallback_log_candidates(input);
     }
 
-    if kept.len() > max_lines {
-        kept.truncate(max_lines);
-        excluded.push(format!("line budget enforced: max_lines={max_lines}"));
-    }
-
-    PruneReport {
-        original_lines: input.lines().count(),
-        kept_lines: kept.len(),
-        output: kept.join("\n"),
-        included,
-        excluded,
-    }
+    heuristic::finalize_report(input, candidates, max_lines.max(1), "log")
 }
 
+/// Prune a git diff to query-relevant file headers and hunks.
 pub fn prune_diff(input: &str, query: &str, max_lines: usize) -> PruneReport {
-    let mut included = Vec::new();
-    let mut excluded = Vec::new();
-    let mut kept = Vec::new();
-
-    let query_terms = tokenize_query(query);
-
-    let mut current_block = Vec::new();
-    let mut current_match = false;
-    let mut any_match = false;
-
-    let flush_block = |block: &mut Vec<String>,
-                       matched: bool,
-                       kept: &mut Vec<String>,
-                       included: &mut Vec<String>,
-                       excluded: &mut Vec<String>| {
-        if block.is_empty() {
-            return;
-        }
-        if matched {
-            kept.extend(block.iter().cloned());
-            included.push("kept diff block due to query match".to_string());
-        } else {
-            excluded.push("excluded diff block with no query overlap".to_string());
-        }
-        block.clear();
-    };
-
-    for raw_line in input.lines() {
-        let line = raw_line.to_string();
-        let starts_new_block = line.starts_with("diff --git ");
-
-        if starts_new_block {
-            flush_block(
-                &mut current_block,
-                current_match,
-                &mut kept,
-                &mut included,
-                &mut excluded,
-            );
-            current_match = false;
-        }
-
-        if line.starts_with("diff --git") || line.starts_with("@@") {
-            current_block.push(line);
-            continue;
-        }
-
-        if line.starts_with('+') || line.starts_with('-') {
-            if line.starts_with("+++") || line.starts_with("---") {
-                current_block.push(line);
-                continue;
-            }
-
-            if query_terms
-                .iter()
-                .any(|term| line.to_lowercase().contains(term))
-            {
-                current_match = true;
-                any_match = true;
-            }
-        }
-
-        current_block.push(line);
-    }
-
-    flush_block(
-        &mut current_block,
-        current_match || !any_match,
-        &mut kept,
-        &mut included,
-        &mut excluded,
-    );
-
-    if kept.len() > max_lines {
-        kept.truncate(max_lines);
-        excluded.push(format!("line budget enforced: max_lines={max_lines}"));
-    }
-
-    PruneReport {
-        original_lines: input.lines().count(),
-        kept_lines: kept.len(),
-        output: kept.join("\n"),
-        included,
-        excluded,
-    }
+    parsers::prune_git_diff(input, query, max_lines.max(1))
 }
 
-fn tokenize_query(query: &str) -> Vec<String> {
+pub(crate) fn tokenize_query(query: &str) -> Vec<String> {
     query
-        .split_whitespace()
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_' && ch != '-')
         .map(|part| part.trim().to_lowercase())
         .filter(|part| part.len() > 2)
         .collect()

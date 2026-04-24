@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use ctx_ast::{SymbolKind, extract_symbols, slice_symbols};
@@ -10,7 +12,7 @@ use ctx_graph::{GraphStore, MemoryDirective, SnippetHit, SymbolHit};
 use ctx_intake::{Intent, QueryIntake};
 use ctx_pack::{PackInput, PackResult, build_pack};
 use ctx_prune::{PruneReport, prune_diff, prune_logs};
-use ctx_semantic::{ChunkCandidate, RankingConfig, SemanticBackendKind, rank_chunks_hybrid};
+use ctx_semantic::{ChunkCandidate, SemanticBackendKind, SemanticEngineConfig, rank_chunks};
 use ctx_telemetry::{StatsSnapshot, write_latest_stats};
 use ctx_token::estimate_tokens;
 use serde::Serialize;
@@ -135,34 +137,46 @@ pub fn run_pack(
 
     let retrieved = run_retrieve(repo_root, query, 8).unwrap_or_default();
     let mut symbols = Vec::new();
+    let mut tests = Vec::new();
     let mut docs = Vec::new();
     for hit in &retrieved {
-        if hit.source == "symbol" {
+        if hit.source == "symbol" && is_test_context(&hit.content) {
+            tests.push(hit.content.clone());
+        } else if hit.source == "symbol" {
             symbols.push(hit.content.clone());
         } else {
             docs.push(hit.content.clone());
         }
     }
 
-    let memory = if cfg.graph.enabled {
-        load_memory_context(repo_root, &cfg, query, 12).unwrap_or_default()
+    let (dependencies, task_memory, failure_memory, memory) = if cfg.graph.enabled {
+        (
+            load_immediate_dependencies(repo_root, &cfg, query, 10).unwrap_or_default(),
+            load_task_memory(repo_root, &cfg, 8).unwrap_or_default(),
+            load_failure_memory(repo_root, &cfg, 8).unwrap_or_default(),
+            load_memory_context(repo_root, &cfg, query, 12).unwrap_or_default(),
+        )
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
     };
+
+    let recent_diff = load_recent_diff(repo_root, query, max_lines).unwrap_or_default();
 
     let pack_input = PackInput {
         query: query.to_string(),
         error_root_cause: root_cause,
         symbols,
-        tests: Vec::new(),
-        recent_diff: None,
-        dependencies: Vec::new(),
+        tests,
+        recent_diff,
+        dependencies,
+        task_memory,
+        failure_memory,
         memory,
         docs,
         budget: budget.unwrap_or(cfg.general.default_budget),
     };
 
-    let result = build_pack(&pack_input);
+    let result = write_pack_artifact(repo_root, build_pack(&pack_input))?;
 
     let stats = StatsSnapshot {
         original_tokens: result.original_estimated_tokens,
@@ -328,15 +342,11 @@ pub fn run_retrieve(repo_root: &Path, query: &str, top_k: usize) -> Result<Vec<R
         return Ok(Vec::new());
     }
 
-    let ranked = rank_chunks_hybrid(
+    let ranked = rank_chunks(
         query,
         &candidates,
-        RankingConfig {
-            backend: SemanticBackendKind::LocalHash,
-            max_chunks: top_k.max(1),
-            adaptive_threshold: true,
-        },
-    );
+        semantic_engine_config(repo_root, &cfg, top_k),
+    )?;
 
     let symbol_map = symbol_hits
         .iter()
@@ -672,6 +682,146 @@ fn failure_overlap_score(query: &str, failure_text: &str) -> f64 {
         .filter(|token| failure_text.contains(token.as_str()))
         .count() as f64;
     (overlap / tokens.len() as f64).clamp(0.0, 1.0)
+}
+
+fn semantic_engine_config(repo_root: &Path, cfg: &CtxConfig, top_k: usize) -> SemanticEngineConfig {
+    let backend = if cfg.semantic.enabled {
+        SemanticBackendKind::parse(&cfg.semantic.backend).unwrap_or(SemanticBackendKind::LocalHash)
+    } else {
+        SemanticBackendKind::LocalHash
+    };
+
+    SemanticEngineConfig {
+        backend,
+        model_path: non_empty_config_path(repo_root, &cfg.semantic.model),
+        vocab_path: cfg
+            .semantic
+            .vocab
+            .as_deref()
+            .and_then(|path| non_empty_config_path(repo_root, path)),
+        max_chunks: top_k.max(1).min(cfg.semantic.max_chunks.max(1)),
+        adaptive_threshold: true,
+        allow_fallback: cfg.semantic.allow_fallback,
+    }
+}
+
+fn non_empty_config_path(repo_root: &Path, raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "local-mini-embed" {
+        return None;
+    }
+
+    let path = PathBuf::from(trimmed);
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        Some(repo_root.join(path))
+    }
+}
+
+fn is_test_context(content: &str) -> bool {
+    let lower = content.to_lowercase();
+    lower.contains("test") || lower.contains("spec") || lower.contains("tests/")
+}
+
+fn load_recent_diff(repo_root: &Path, query: &str, max_lines: usize) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(["diff", "--no-ext-diff", "--"])
+        .current_dir(repo_root)
+        .output();
+
+    let Ok(output) = output else {
+        return Ok(None);
+    };
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout).to_string();
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let pruned = run_prune_diff(&raw, query, max_lines);
+    if pruned.output.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(pruned.output))
+    }
+}
+
+fn load_immediate_dependencies(
+    repo_root: &Path,
+    cfg: &CtxConfig,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<String>> {
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+
+    for term in query_terms(query).into_iter().take(8) {
+        for hit in store.search_symbols(&term)?.into_iter().take(4) {
+            for related in store.related_symbols(&hit.name, limit.max(1))? {
+                let dependency = format!(
+                    "{}::{} -> {}::{} ({})",
+                    hit.file_path, hit.name, related.file_path, related.name, related.kind
+                );
+                if !seen.insert(dependency.clone()) {
+                    continue;
+                }
+                out.push(dependency);
+                if out.len() >= limit.max(1) {
+                    return Ok(out);
+                }
+            }
+        }
+    }
+
+    Ok(out)
+}
+
+fn load_task_memory(repo_root: &Path, cfg: &CtxConfig, limit: usize) -> Result<Vec<String>> {
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    Ok(store
+        .recent_decisions(limit.max(1))?
+        .into_iter()
+        .map(|decision| format!("decision: {decision}"))
+        .collect())
+}
+
+fn load_failure_memory(repo_root: &Path, cfg: &CtxConfig, limit: usize) -> Result<Vec<String>> {
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+    Ok(store
+        .recent_failures(limit.max(1))?
+        .into_iter()
+        .map(|failure| {
+            let root = failure.root_cause.unwrap_or_default();
+            if root.is_empty() {
+                format!("failure: {}", failure.message)
+            } else {
+                format!("failure: {} root_cause: {}", failure.message, root)
+            }
+        })
+        .collect())
+}
+
+fn write_pack_artifact(repo_root: &Path, result: PackResult) -> Result<PackResult> {
+    let packs_dir = repo_root.join(".ctx/packs");
+    fs::create_dir_all(&packs_dir)
+        .with_context(|| format!("failed to create packs dir {}", packs_dir.display()))?;
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let path = packs_dir.join(format!("pack-{ts}.json"));
+    let with_path = result.with_pack_path(path.to_string_lossy().to_string());
+    let json = serde_json::to_string_pretty(&with_path).context("failed to serialize pack")?;
+    fs::write(&path, json).with_context(|| format!("failed to write pack {}", path.display()))?;
+    Ok(with_path)
 }
 
 fn query_terms(query: &str) -> Vec<String> {

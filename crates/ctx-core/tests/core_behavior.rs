@@ -1,6 +1,8 @@
 use std::fs;
+use std::process::Command;
 
 use ctx_core::{init_repo, run_graph_query, run_index, run_pack};
+use ctx_graph::GraphStore;
 use tempfile::tempdir;
 
 #[test]
@@ -66,4 +68,93 @@ fn run_pack_appends_audit_log_entry() {
 
     assert!(audit.contains("run_pack"));
     assert!(audit.contains("query=\"fix auth\""));
+}
+
+#[test]
+fn run_pack_includes_advanced_context_and_writes_pack_artifact() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    Command::new("git")
+        .args(["init"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("git init");
+    Command::new("git")
+        .args(["config", "user.email", "ctx@example.test"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("git config email");
+    Command::new("git")
+        .args(["config", "user.name", "CTX Test"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("git config name");
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        r#"
+fn validate_refresh_token(token: &str) -> bool {
+    decode_token(token)
+}
+
+fn decode_token(token: &str) -> bool {
+    !token.is_empty()
+}
+"#,
+    )
+    .expect("write");
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("git commit");
+
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        r#"
+fn validate_refresh_token(token: &str) -> bool {
+    decode_token(token) && token != "expired"
+}
+
+fn decode_token(token: &str) -> bool {
+    !token.is_empty()
+}
+"#,
+    )
+    .expect("modify");
+
+    run_index(tmp.path(), &[]).expect("index");
+    let store = GraphStore::open(&tmp.path().join(".ctx/graph.db")).expect("graph");
+    store.init_schema().expect("schema");
+    let run_id = store
+        .record_run("pytest tests/auth.rs", "failed")
+        .expect("run");
+    store
+        .record_failure(run_id, "expired refresh token", Some("rotation skipped"))
+        .expect("failure");
+    store
+        .record_decision("Auth API", "preserve validate_refresh_token signature")
+        .expect("decision");
+
+    let packed = run_pack(tmp.path(), "fix refresh token", Some(220), None).expect("pack");
+
+    assert!(packed.compact_context.contains("recent_diff:"));
+    assert!(packed.compact_context.contains("dependencies:"));
+    assert!(packed.compact_context.contains("task_memory:"));
+    assert!(packed.compact_context.contains("failure_memory:"));
+    let pack_path = packed.pack_path.expect("pack path");
+    assert!(std::path::Path::new(&pack_path).exists());
+    assert!(
+        packed
+            .included
+            .iter()
+            .any(|entry| entry.contains("included"))
+    );
 }
