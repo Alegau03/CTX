@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS runs (
   task_id INTEGER,
   command TEXT NOT NULL,
   status TEXT NOT NULL,
+  agent TEXT,
+  exit_code INTEGER,
+  duration_ms INTEGER,
+  original_tokens INTEGER,
+  packed_tokens INTEGER,
+  reduction_pct REAL,
+  fallback_used INTEGER NOT NULL DEFAULT 0,
+  pack_path TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -95,6 +103,7 @@ CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_failures_created_at ON failures(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_scope_updated_at ON memory_directives(scope, updated_at);
+CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at);
 
 CREATE TRIGGER IF NOT EXISTS snippets_ai AFTER INSERT ON snippets BEGIN
   INSERT INTO snippets_fts(rowid, content) VALUES (new.id, new.content);

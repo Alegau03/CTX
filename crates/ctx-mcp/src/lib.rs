@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -118,6 +119,44 @@ pub fn serve_http(cfg: McpServerConfig) -> Result<()> {
     Ok(())
 }
 
+pub fn serve_stdio(cfg: McpServerConfig) -> Result<()> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    for line in stdin.lock().lines() {
+        let line = line.context("failed to read stdio rpc line")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let response = process_rpc_message(&cfg, &line);
+        writeln!(stdout, "{response}").context("failed to write stdio rpc response")?;
+        stdout
+            .flush()
+            .context("failed to flush stdio rpc response")?;
+    }
+
+    Ok(())
+}
+
+pub fn process_rpc_message(cfg: &McpServerConfig, body: &str) -> String {
+    let parsed = serde_json::from_str::<RpcRequest>(body);
+    match parsed {
+        Ok(rpc) => {
+            let id = rpc.id.unwrap_or(Value::Null);
+            match process_rpc(cfg, &rpc.method, rpc.params.as_ref()) {
+                Ok(result) => rpc_success(id, result).to_string(),
+                Err(err) => rpc_error(id, -32000, &format!("{err:#}")).to_string(),
+            }
+        }
+        Err(err) => rpc_error(
+            Value::Null,
+            -32700,
+            &format!("invalid rpc json body: {err}"),
+        )
+        .to_string(),
+    }
+}
+
 fn handle_http_request(cfg: &McpServerConfig, mut request: Request) -> Result<()> {
     match (request.method(), request.url()) {
         (&Method::Get, "/health") => {
@@ -131,14 +170,8 @@ fn handle_http_request(cfg: &McpServerConfig, mut request: Request) -> Result<()
                 .read_to_string(&mut body)
                 .context("failed to read request body")?;
 
-            let rpc: RpcRequest = serde_json::from_str(&body)
-                .with_context(|| format!("invalid rpc json body: {body}"))?;
-            let id = rpc.id.unwrap_or(Value::Null);
-
-            let response = match process_rpc(cfg, &rpc.method, rpc.params.as_ref()) {
-                Ok(result) => rpc_success(id, result),
-                Err(err) => rpc_error(id, -32000, &format!("{err:#}")),
-            };
+            let response: Value =
+                serde_json::from_str(&process_rpc_message(cfg, &body)).context("rpc response")?;
 
             respond_json(request, StatusCode(200), response)
         }

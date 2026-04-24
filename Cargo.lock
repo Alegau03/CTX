@@ -284,6 +284,7 @@ name = "ctx-adapters"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "tempfile",
 ]
 
 [[package]]
@@ -306,6 +307,7 @@ dependencies = [
  "clap",
  "ctx-adapters",
  "ctx-core",
+ "ctx-hooks",
  "ctx-intake",
  "ctx-mcp",
  "predicates",
@@ -328,6 +330,7 @@ name = "ctx-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ctx-adapters",
  "ctx-ast",
  "ctx-config",
  "ctx-graph",

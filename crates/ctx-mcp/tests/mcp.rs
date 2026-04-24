@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use ctx_core::init_repo;
-use ctx_mcp::{McpServerConfig, default_tools, mcp_banner, serve_http};
+use ctx_mcp::{McpServerConfig, default_tools, mcp_banner, process_rpc_message, serve_http};
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -73,6 +73,27 @@ fn tools_list_rpc_returns_required_tools() {
 
     assert!(names.contains(&"get_relevant_context".to_string()));
     assert!(names.contains(&"project_map".to_string()));
+}
+
+#[test]
+fn stdio_rpc_message_uses_same_initialize_contract() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let cfg = McpServerConfig {
+        repo_root: tmp.path().to_path_buf(),
+        port: 8765,
+        once: false,
+    };
+
+    let response = process_rpc_message(
+        &cfg,
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+    );
+    let value: Value = serde_json::from_str(&response).expect("json response");
+
+    assert_eq!(value["jsonrpc"], "2.0");
+    assert_eq!(value["id"], 1);
+    assert_eq!(value["result"]["serverInfo"]["name"], "ctx-mcp");
 }
 
 #[test]

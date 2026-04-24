@@ -82,3 +82,34 @@ fn template_config_is_valid() {
     assert!(parsed.security.exclude_sensitive_files);
     assert!(!parsed.security.sensitive_patterns.is_empty());
 }
+
+#[test]
+fn security_defaults_are_local_first_and_telemetry_opt_in() {
+    let cfg = CtxConfig::default();
+
+    assert!(cfg.security.local_only);
+    assert!(!cfg.security.remote_upload_enabled);
+    assert!(!cfg.security.anonymous_telemetry_enabled);
+    assert!(cfg.security.local_stats_enabled);
+    assert!(cfg.security.audit_include_exclude);
+    assert!(cfg.security.exclude_sensitive_files);
+    assert!(
+        cfg.security
+            .ignored_dirs
+            .iter()
+            .any(|dir| dir == "node_modules")
+    );
+}
+
+#[test]
+fn security_rejects_remote_upload_when_local_only_is_enabled() {
+    let result = CtxConfig::from_toml_str(
+        r#"
+[security]
+local_only = true
+remote_upload_enabled = true
+"#,
+    );
+
+    assert!(result.is_err());
+}

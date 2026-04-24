@@ -3,14 +3,15 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
-use ctx_adapters::{Agent, execute_invocation, prepare_invocation};
+use ctx_adapters::Agent;
 use ctx_core::{
-    init_repo, load_or_default_config, run_explain, run_graph_query, run_index,
-    run_memory_ab_benchmark, run_memory_delete, run_memory_export_markdown, run_memory_get,
-    run_memory_import_markdown, run_memory_list, run_memory_set, run_pack, run_prune_diff,
-    run_prune_logs, run_retrieve,
+    init_repo, load_or_default_config, run_agent_invocation, run_explain, run_graph_query,
+    run_index, run_memory_ab_benchmark, run_memory_delete, run_memory_export_markdown,
+    run_memory_get, run_memory_import_markdown, run_memory_list, run_memory_set, run_pack,
+    run_prune_diff, run_prune_logs, run_retrieve,
 };
-use ctx_mcp::{McpServerConfig, serve_http};
+use ctx_hooks::apply_pre_prompt_hook;
+use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -55,6 +56,13 @@ enum Commands {
     Pack {
         query: String,
     },
+    Ask {
+        query: String,
+    },
+    Hook {
+        query: String,
+    },
+    Wrap(WrapArgs),
     Explain {
         query: String,
     },
@@ -86,6 +94,7 @@ enum Commands {
         command: BenchmarkCommands,
     },
     Stats,
+    Doctor,
     Help,
 }
 
@@ -110,6 +119,8 @@ enum OpenCodeCommands {
 #[derive(Debug, Subcommand)]
 enum McpCommands {
     Serve(McpServeArgs),
+    Stdio,
+    Config(McpConfigArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -172,6 +183,23 @@ struct McpServeArgs {
 
     #[arg(long, default_value_t = false)]
     once: bool,
+}
+
+#[derive(Debug, Args)]
+struct McpConfigArgs {
+    #[arg(default_value = "claude")]
+    client: String,
+
+    #[arg(long)]
+    port: Option<u16>,
+}
+
+#[derive(Debug, Args)]
+struct WrapArgs {
+    agent: String,
+
+    #[arg(long)]
+    prompt: String,
 }
 
 #[derive(Debug, Args)]
@@ -277,6 +305,43 @@ fn run() -> Result<()> {
                 println!("{}", result.compact_context);
             }
         }
+        Commands::Ask { query } => {
+            let result = run_pack(&repo_root, &query, cli.budget, cli.attach.as_deref())?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("{}", result.compact_context);
+            }
+        }
+        Commands::Hook { query } => {
+            let result = run_pack(&repo_root, &query, cli.budget, cli.attach.as_deref())?;
+            let hook_prompt = apply_pre_prompt_hook(&query, &result.compact_context);
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "query": query,
+                        "hook_prompt": hook_prompt,
+                        "packed_tokens": result.packed_tokens,
+                        "reduction_pct": result.reduction_pct,
+                        "pack_path": result.pack_path,
+                    }))?
+                );
+            } else {
+                println!("{hook_prompt}");
+            }
+        }
+        Commands::Wrap(args) => {
+            let agent = parse_agent(&args.agent)?;
+            run_adapter_wrapper(
+                &repo_root,
+                agent,
+                &args.prompt,
+                cli.budget,
+                cli.attach.as_deref(),
+                cli.json,
+            )?;
+        }
         Commands::Explain { query } => {
             let explain = run_explain(&repo_root, &query)?;
             if cli.json {
@@ -314,11 +379,18 @@ fn run() -> Result<()> {
                 &query,
                 cli.budget,
                 cli.attach.as_deref(),
+                cli.json,
             )?;
         }
         Commands::Claude { query } => {
-            let packed = run_pack(&repo_root, &query, cli.budget, cli.attach.as_deref())?;
-            println!("adapter=claude\n{}", packed.compact_context);
+            run_adapter_wrapper(
+                &repo_root,
+                Agent::Claude,
+                &query,
+                cli.budget,
+                cli.attach.as_deref(),
+                cli.json,
+            )?;
         }
         Commands::Opencode { command } => match command {
             OpenCodeCommands::Run { query } => {
@@ -328,6 +400,7 @@ fn run() -> Result<()> {
                     &query,
                     cli.budget,
                     cli.attach.as_deref(),
+                    cli.json,
                 )?;
             }
         },
@@ -340,6 +413,19 @@ fn run() -> Result<()> {
                     port,
                     once: args.once,
                 })?;
+            }
+            McpCommands::Stdio => {
+                let cfg = load_or_default_config(&repo_root)?;
+                serve_stdio(McpServerConfig {
+                    repo_root: repo_root.clone(),
+                    port: cfg.mcp.port,
+                    once: false,
+                })?;
+            }
+            McpCommands::Config(args) => {
+                let cfg = load_or_default_config(&repo_root)?;
+                let port = args.port.unwrap_or(cfg.mcp.port);
+                println!("{}", render_mcp_config(&repo_root, &args.client, port)?);
             }
         },
         Commands::Memory { command } => match command {
@@ -482,6 +568,9 @@ fn run() -> Result<()> {
                 println!("{body}");
             }
         }
+        Commands::Doctor => {
+            println!("{}", render_doctor_report(&repo_root));
+        }
         Commands::Help => {
             println!("{}", command_guide());
         }
@@ -508,43 +597,140 @@ fn intent_label(intent: ctx_intake::Intent) -> &'static str {
     }
 }
 
+fn parse_agent(raw: &str) -> Result<Agent> {
+    match raw.to_ascii_lowercase().as_str() {
+        "codex" => Ok(Agent::Codex),
+        "claude" | "claude-code" => Ok(Agent::Claude),
+        "opencode" | "open-code" => Ok(Agent::OpenCode),
+        "generic" => Ok(Agent::Generic),
+        other => Err(anyhow!(
+            "unknown adapter '{other}'. Expected one of: codex, claude, opencode, generic"
+        )),
+    }
+}
+
+fn render_mcp_config(repo_root: &std::path::Path, client: &str, port: u16) -> Result<String> {
+    match client.to_ascii_lowercase().as_str() {
+        "claude" | "claude-code" => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "mcpServers": {
+                "ctx": {
+                    "command": "ctx",
+                    "args": [
+                        "--repo-root",
+                        repo_root.to_string_lossy(),
+                        "mcp",
+                        "stdio"
+                    ]
+                }
+            }
+        }))?),
+        "http" | "generic-http" => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "name": "ctx",
+            "transport": "http-json-rpc",
+            "url": format!("http://127.0.0.1:{port}/rpc"),
+            "health": format!("http://127.0.0.1:{port}/health"),
+            "repo_root": repo_root.to_string_lossy()
+        }))?),
+        other => Err(anyhow!(
+            "unknown MCP config client '{other}'. Expected: claude or http"
+        )),
+    }
+}
+
 fn run_adapter_wrapper(
     repo_root: &std::path::Path,
     agent: Agent,
     query: &str,
     budget: Option<usize>,
     attach: Option<&std::path::Path>,
+    json: bool,
 ) -> Result<()> {
-    let packed = run_pack(repo_root, query, budget, attach)?;
-    let invocation = prepare_invocation(agent, query, &packed.compact_context);
+    let report = run_agent_invocation(repo_root, agent, query, budget, attach)?;
 
-    match execute_invocation(&invocation) {
-        Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(anyhow!(
-            "adapter '{}' exited with non-zero status: {status}",
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report.fallback_used {
+        eprintln!(
+            "ctx warning: '{}' not found in PATH. Falling back to prepared context output.",
             agent.label()
-        )),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            eprintln!(
-                "ctx warning: '{}' not found in PATH. Falling back to prepared context output.",
-                invocation.program
-            );
-            println!(
-                "adapter={}\ncommand={}\n{}",
-                agent.label(),
-                invocation.command_preview(),
-                invocation.prompt
-            );
-            Ok(())
-        }
-        Err(err) => Err(err).with_context(|| {
-            format!(
-                "failed to execute adapter '{}' via '{}'",
-                agent.label(),
-                invocation.program
-            )
-        }),
+        );
+        println!(
+            "adapter={}\ncommand={}\n{}",
+            report.agent,
+            report.command,
+            report.prompt_preview.unwrap_or_default()
+        );
     }
+
+    if report.status == "failed" {
+        Err(anyhow!(
+            "adapter '{}' exited with non-zero status: {:?}",
+            report.agent,
+            report.exit_code
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn render_doctor_report(repo_root: &std::path::Path) -> String {
+    let config_path = repo_root.join(".ctx/config.toml");
+    let graph_path = repo_root.join(".ctx/graph.db");
+    let stats_dir = repo_root.join(".ctx/stats");
+    let audit_path = repo_root.join(".ctx/audit.log");
+    let packs_dir = repo_root.join(".ctx/packs");
+
+    let mut lines = vec![
+        "CTX Doctor".to_string(),
+        format!("repo_root: {}", repo_root.display()),
+        format!("binary: {}", current_binary_label()),
+        format!("config: {}", status_label(config_path.is_file())),
+        format!("graph: {}", status_label(graph_path.is_file())),
+        format!("packs_dir: {}", status_label(packs_dir.is_dir())),
+        format!("stats_dir: {}", status_label(stats_dir.is_dir())),
+        format!("audit_log: {}", status_label(audit_path.is_file())),
+    ];
+
+    match load_or_default_config(repo_root) {
+        Ok(cfg) => {
+            lines.push(format!("local_only: {}", cfg.security.local_only));
+            lines.push(format!(
+                "remote_upload_enabled: {}",
+                cfg.security.remote_upload_enabled
+            ));
+            lines.push(format!(
+                "anonymous_telemetry_enabled: {}",
+                cfg.security.anonymous_telemetry_enabled
+            ));
+            lines.push(format!(
+                "exclude_sensitive_files: {}",
+                cfg.security.exclude_sensitive_files
+            ));
+        }
+        Err(err) => {
+            lines.push(format!("config_load_error: {err:#}"));
+        }
+    }
+
+    let next = if !config_path.is_file() {
+        "ctx init"
+    } else if !graph_path.is_file() {
+        "ctx init"
+    } else {
+        "ctx index"
+    };
+    lines.push(format!("next: {next}"));
+    lines.join("\n")
+}
+
+fn current_binary_label() -> String {
+    std::env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn status_label(ok: bool) -> &'static str {
+    if ok { "ok" } else { "missing" }
 }
 
 fn command_guide() -> &'static str {
@@ -589,62 +775,86 @@ Example: git diff | ctx prune diff --query "refresh token"
 What it does: Creates an advanced compact context package with strict priorities, included/excluded reasons and a saved pack artifact.
 Example: ctx pack "fix failing pytest in auth" --json --attach /tmp/fail.txt
 
-10) ctx explain <query>
+10) ctx ask <query>
+What it does: Builds compact context for a human or agent without invoking a specific CLI.
+Example: ctx ask "where is retry logic implemented?"
+
+11) ctx hook <query>
+What it does: Produces a pre-prompt payload for agent hook/preprocessing scripts.
+Example: ctx hook "fix flaky auth test"
+
+12) ctx explain <query>
 What it does: Explains likely relevant context and detected intent.
 Example: ctx explain "fix failing pytest in auth"
 
-11) ctx retrieve <query> [--limit n]
+13) ctx retrieve <query> [--limit n]
 What it does: Runs hybrid retrieval (graph + snippets + semantic ranking).
 Example: ctx retrieve "refresh token auth failure" --limit 5
 
-12) ctx codex <query>
-What it does: Builds compact context and invokes Codex CLI with that context.
+14) ctx codex <query>
+What it does: Builds compact context, runs `codex exec`, and records local invocation telemetry.
 Example: ctx codex "review the last diff and find risky changes"
 
-13) ctx claude <query>
-What it does: Prepares compact context for Claude adapter flow.
+15) ctx claude <query>
+What it does: Builds compact context, runs `claude -p`, and records local invocation telemetry.
 Example: ctx claude "explain why this test is flaky"
 
-14) ctx opencode run <query>
-What it does: Builds compact context and invokes OpenCode CLI with that context.
+16) ctx opencode run <query>
+What it does: Builds compact context, runs `opencode run`, and records local invocation telemetry.
 Example: ctx opencode run "implement caching for embeddings"
 
-15) ctx mcp serve [--port p] [--once]
+17) ctx wrap <agent> --prompt <query>
+What it does: Generic wrapper entrypoint for codex, claude, opencode, or generic adapters.
+Example: ctx wrap claude --prompt "explain why this test is flaky"
+
+18) ctx mcp serve [--port p] [--once]
 What it does: Starts local MCP-compatible RPC server on localhost.
 Example: ctx mcp serve --port 8765
 Example: ctx mcp serve --port 8765 --once
 
-16) ctx memory set <key> <body> [--scope s] [--source src]
+19) ctx mcp stdio
+What it does: Runs MCP JSON-RPC over stdin/stdout for clients that launch local MCP commands.
+Example: ctx --repo-root /path/to/project mcp stdio
+
+20) ctx mcp config claude
+What it does: Prints a Claude Code MCP configuration snippet for this repository.
+Example: ctx mcp config claude
+
+21) ctx memory set <key> <body> [--scope s] [--source src]
 What it does: Upserts a graph-backed memory directive replacing markdown habit files.
 Example: ctx memory set testing.always_run "Run targeted tests before completion" --scope project --source manual
 
-17) ctx memory get <key>
+22) ctx memory get <key>
 What it does: Reads one memory directive from graph memory.
 Example: ctx memory get testing.always_run
 
-18) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
+23) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
 What it does: Imports markdown habit files (AGENTS/CLAUDE/CODEX) into graph memory directives.
 Example: ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
 
-19) ctx memory export --to <file> [--scope s] [--limit n]
+24) ctx memory export --to <file> [--scope s] [--limit n]
 What it does: Exports graph memory directives back to markdown for compatibility or auditing.
 Example: ctx memory export --to AGENTS.generated.md --scope project --limit 200
 
-20) ctx memory list [--scope s] [--limit n]
+25) ctx memory list [--scope s] [--limit n]
 What it does: Lists recent memory directives (optionally filtered by scope).
 Example: ctx memory list --scope project --limit 10
 
-21) ctx memory delete <key>
+26) ctx memory delete <key>
 What it does: Deletes one memory directive from graph memory.
 Example: ctx memory delete testing.always_run
 
-22) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
+27) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
 What it does: Compares graph memory directives vs markdown rules on token cost, query coverage and optional quality/success via checklist + answer files.
 Example: ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENTS.md --limit 20
 
-23) ctx stats
-What it does: Prints latest local telemetry snapshot from .ctx/stats/latest.json.
+28) ctx stats
+What it does: Prints latest local telemetry snapshot, including token reduction, latency, adapter status, and fallback metadata.
 Example: ctx stats
+
+29) ctx doctor
+What it does: Checks first-run/install readiness: config, graph, local stats, audit log, and privacy defaults.
+Example: ctx doctor
 
 Global options:
 --repo-root <path>  Use a specific repository root

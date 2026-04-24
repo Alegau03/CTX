@@ -1,19 +1,22 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
+use ctx_adapters::{AdapterRunStatus, Agent, execute_invocation_with_result, prepare_invocation};
 use ctx_ast::{SymbolKind, extract_symbols, slice_symbols};
 use ctx_config::{CtxConfig, write_default_config};
-use ctx_graph::{GraphStore, MemoryDirective, SnippetHit, SymbolHit};
+use ctx_graph::{GraphStore, MemoryDirective, RunInsert, SnippetHit, SymbolHit};
 use ctx_intake::{Intent, QueryIntake};
 use ctx_pack::{PackInput, PackResult, build_pack};
 use ctx_prune::{PruneReport, prune_diff, prune_logs};
 use ctx_semantic::{ChunkCandidate, SemanticBackendKind, SemanticEngineConfig, rank_chunks};
-use ctx_telemetry::{StatsSnapshot, write_latest_stats};
+use ctx_telemetry::{
+    AuditEvent, PrivacyAuditEvent, StatsSnapshot, append_audit_event, append_audit_line,
+    append_privacy_audit_event, write_latest_stats,
+};
 use ctx_token::estimate_tokens;
 use serde::Serialize;
 use walkdir::WalkDir;
@@ -78,6 +81,22 @@ pub struct MemoryExportReport {
     pub directives: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AdapterRunReport {
+    pub agent: String,
+    pub command: String,
+    pub status: String,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u64,
+    pub fallback_used: bool,
+    pub fallback_reason: Option<String>,
+    pub original_tokens: usize,
+    pub packed_tokens: usize,
+    pub reduction_pct: f64,
+    pub pack_path: Option<String>,
+    pub prompt_preview: Option<String>,
+}
+
 pub fn init_repo(repo_root: &Path) -> Result<PathBuf> {
     let config_path = write_default_config(repo_root)?;
 
@@ -121,6 +140,14 @@ pub fn run_pack(
         if cfg.security.exclude_sensitive_files
             && is_sensitive_path(path, &cfg.security.sensitive_patterns)
         {
+            audit_privacy_decision(
+                repo_root,
+                &cfg,
+                "excluded",
+                Some(path),
+                "sensitive_pattern",
+                "blocked sensitive attachment before packing",
+            );
             bail!(
                 "attachment {} matches sensitive file patterns and was blocked",
                 path.display()
@@ -183,17 +210,117 @@ pub fn run_pack(
         packed_tokens: result.packed_tokens,
         reduction_pct: result.reduction_pct,
         latency_ms: 0,
+        agent: None,
+        command: None,
+        status: None,
+        exit_code: None,
+        fallback_used: false,
+        pack_path: result.pack_path.clone(),
     };
-    let _ = write_latest_stats(&repo_root.join(".ctx/stats"), &stats);
+    if cfg.security.local_stats_enabled {
+        let _ = write_latest_stats(&repo_root.join(".ctx/stats"), &stats);
+    }
     let _ = append_audit_entry(
         repo_root,
         &format!(
-            "run_pack query=\"{}\" packed_tokens={} reduction_pct={:.2}",
-            query, result.packed_tokens, result.reduction_pct
+            "run_pack query=\"{}\" packed_tokens={} reduction_pct={:.2} included={} excluded={}",
+            query,
+            result.packed_tokens,
+            result.reduction_pct,
+            result.included.len(),
+            result.excluded.len()
         ),
     );
 
     Ok(result)
+}
+
+pub fn run_agent_invocation(
+    repo_root: &Path,
+    agent: Agent,
+    query: &str,
+    budget: Option<usize>,
+    attach: Option<&Path>,
+) -> Result<AdapterRunReport> {
+    let started = Instant::now();
+    let packed = run_pack(repo_root, query, budget, attach)?;
+    let invocation = prepare_invocation(agent, query, &packed.compact_context);
+    let execution = execute_invocation_with_result(&invocation).with_context(|| {
+        format!(
+            "failed to execute adapter '{}' via '{}'",
+            agent.label(),
+            invocation.program
+        )
+    })?;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let status = adapter_status_label(execution.status).to_string();
+    let pack_path = packed.pack_path.clone();
+    let prompt_preview = if execution.fallback_used {
+        Some(invocation.prompt.clone())
+    } else {
+        None
+    };
+
+    let cfg = load_or_default_config(repo_root)?;
+    if cfg.graph.enabled {
+        let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+        store.init_schema()?;
+        let _ = store.record_invocation_run(&RunInsert {
+            command: execution.command.clone(),
+            status: status.clone(),
+            agent: Some(agent.label().to_string()),
+            exit_code: execution.exit_code,
+            duration_ms: Some(duration_ms),
+            original_tokens: Some(packed.original_estimated_tokens),
+            packed_tokens: Some(packed.packed_tokens),
+            reduction_pct: Some(packed.reduction_pct),
+            fallback_used: execution.fallback_used,
+            pack_path: pack_path.clone(),
+        });
+    }
+
+    let stats = StatsSnapshot {
+        original_tokens: packed.original_estimated_tokens,
+        packed_tokens: packed.packed_tokens,
+        reduction_pct: packed.reduction_pct,
+        latency_ms: duration_ms,
+        agent: Some(agent.label().to_string()),
+        command: Some(execution.command.clone()),
+        status: Some(status.clone()),
+        exit_code: execution.exit_code,
+        fallback_used: execution.fallback_used,
+        pack_path: pack_path.clone(),
+    };
+    if cfg.security.local_stats_enabled {
+        let _ = write_latest_stats(&repo_root.join(".ctx/stats"), &stats);
+    }
+    let _ = append_audit_event(
+        &repo_root.join(".ctx/audit.log"),
+        &AuditEvent {
+            kind: "adapter_invocation".to_string(),
+            message: format!("ctx invoked {}", agent.label()),
+            agent: Some(agent.label().to_string()),
+            command: Some(execution.command.clone()),
+            status: Some(status.clone()),
+            fallback_used: execution.fallback_used,
+            pack_path: pack_path.clone(),
+        },
+    );
+
+    Ok(AdapterRunReport {
+        agent: agent.label().to_string(),
+        command: execution.command,
+        status,
+        exit_code: execution.exit_code,
+        duration_ms,
+        fallback_used: execution.fallback_used,
+        fallback_reason: execution.fallback_reason,
+        original_tokens: packed.original_estimated_tokens,
+        packed_tokens: packed.packed_tokens,
+        reduction_pct: packed.reduction_pct,
+        pack_path,
+        prompt_preview,
+    })
 }
 
 pub fn run_explain(repo_root: &Path, query: &str) -> Result<ExplainResult> {
@@ -235,7 +362,7 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     for root in roots {
         for entry in WalkDir::new(root)
             .into_iter()
-            .filter_entry(|e| !is_ignored_dir(e.path()))
+            .filter_entry(|e| !is_ignored_dir(e.path(), &cfg.security.ignored_dirs))
             .filter_map(std::result::Result::ok)
             .filter(|e| e.file_type().is_file())
         {
@@ -246,6 +373,14 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
             if cfg.security.exclude_sensitive_files
                 && is_sensitive_path(path, &cfg.security.sensitive_patterns)
             {
+                audit_privacy_decision(
+                    repo_root,
+                    &cfg,
+                    "excluded",
+                    Some(path),
+                    "sensitive_pattern",
+                    "skipped sensitive code file during indexing",
+                );
                 continue;
             }
 
@@ -1003,17 +1138,12 @@ fn answer_success_rate(answer_path: Option<&Path>, checklist: &[String]) -> Resu
     Ok((matched as f64 / checklist.len() as f64).clamp(0.0, 1.0))
 }
 
-fn is_ignored_dir(path: &Path) -> bool {
+fn is_ignored_dir(path: &Path, ignored_dirs: &[String]) -> bool {
     path.components().any(|component| {
         component
             .as_os_str()
             .to_str()
-            .map(|name| {
-                matches!(
-                    name,
-                    ".git" | ".ctx" | "target" | "node_modules" | "build" | "dist" | "artifacts"
-                )
-            })
+            .map(|name| ignored_dirs.iter().any(|ignored| ignored == name))
             .unwrap_or(false)
     })
 }
@@ -1047,18 +1177,47 @@ fn is_sensitive_path(path: &Path, patterns: &[String]) -> bool {
         .any(|pattern| lower.contains(&pattern.to_lowercase()))
 }
 
-fn append_audit_entry(repo_root: &Path, line: &str) -> Result<()> {
-    let audit_path = repo_root.join(".ctx/audit.log");
-    if let Some(parent) = audit_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create {}", parent.display()))?;
+fn audit_privacy_decision(
+    repo_root: &Path,
+    cfg: &CtxConfig,
+    decision: &str,
+    path: Option<&Path>,
+    reason: &str,
+    message: &str,
+) {
+    if !cfg.security.audit_include_exclude {
+        return;
     }
 
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&audit_path)
-        .with_context(|| format!("failed to open {}", audit_path.display()))?;
-    writeln!(file, "{line}").context("failed to append audit entry")?;
-    Ok(())
+    let path = path.map(|value| {
+        value
+            .strip_prefix(repo_root)
+            .unwrap_or(value)
+            .to_string_lossy()
+            .to_string()
+    });
+    let _ = append_privacy_audit_event(
+        &repo_root.join(".ctx/audit.log"),
+        &PrivacyAuditEvent {
+            kind: "privacy_decision".to_string(),
+            decision: decision.to_string(),
+            path,
+            reason: reason.to_string(),
+            local_only: cfg.security.local_only,
+            remote_upload_enabled: cfg.security.remote_upload_enabled,
+            message: message.to_string(),
+        },
+    );
+}
+
+fn adapter_status_label(status: AdapterRunStatus) -> &'static str {
+    match status {
+        AdapterRunStatus::Succeeded => "succeeded",
+        AdapterRunStatus::Failed => "failed",
+        AdapterRunStatus::Fallback => "fallback",
+    }
+}
+
+fn append_audit_entry(repo_root: &Path, line: &str) -> Result<()> {
+    append_audit_line(&repo_root.join(".ctx/audit.log"), line)
 }

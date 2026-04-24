@@ -71,6 +71,22 @@ impl CtxConfig {
             bail!("mcp.port must be greater than 0")
         }
 
+        if self.security.local_only && self.security.remote_upload_enabled {
+            bail!("security.remote_upload_enabled cannot be true when security.local_only is true")
+        }
+
+        if self.security.anonymous_telemetry_enabled && !self.security.remote_upload_enabled {
+            bail!(
+                "security.anonymous_telemetry_enabled requires security.remote_upload_enabled = true"
+            )
+        }
+
+        if self.security.exclude_sensitive_files && self.security.sensitive_patterns.is_empty() {
+            bail!(
+                "security.sensitive_patterns must not be empty when security.exclude_sensitive_files is true"
+            )
+        }
+
         Ok(())
     }
 
@@ -180,13 +196,24 @@ impl Default for McpConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SecurityConfig {
+    pub local_only: bool,
+    pub remote_upload_enabled: bool,
+    pub anonymous_telemetry_enabled: bool,
+    pub local_stats_enabled: bool,
+    pub audit_include_exclude: bool,
     pub exclude_sensitive_files: bool,
     pub sensitive_patterns: Vec<String>,
+    pub ignored_dirs: Vec<String>,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
+            local_only: true,
+            remote_upload_enabled: false,
+            anonymous_telemetry_enabled: false,
+            local_stats_enabled: true,
+            audit_include_exclude: true,
             exclude_sensitive_files: true,
             sensitive_patterns: vec![
                 ".env".to_string(),
@@ -195,6 +222,18 @@ impl Default for SecurityConfig {
                 ".key".to_string(),
                 "credentials".to_string(),
                 "secret".to_string(),
+            ],
+            ignored_dirs: vec![
+                ".git".to_string(),
+                ".ctx".to_string(),
+                "target".to_string(),
+                "node_modules".to_string(),
+                "build".to_string(),
+                "dist".to_string(),
+                "artifacts".to_string(),
+                ".next".to_string(),
+                ".cache".to_string(),
+                "coverage".to_string(),
             ],
         }
     }

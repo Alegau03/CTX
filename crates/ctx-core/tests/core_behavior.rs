@@ -57,6 +57,48 @@ fn run_pack_blocks_sensitive_attachment_by_default() {
 }
 
 #[test]
+fn run_pack_audits_blocked_sensitive_attachment() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let attach = tmp.path().join(".env");
+    fs::write(&attach, "API_KEY=secret").expect("write");
+
+    let result = run_pack(tmp.path(), "fix auth", Some(100), Some(&attach));
+    assert!(result.is_err());
+
+    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit readable");
+    assert!(audit.contains("privacy_decision"));
+    assert!(audit.contains("\"decision\":\"excluded\""));
+    assert!(audit.contains("\"reason\":\"sensitive_pattern\""));
+    assert!(audit.contains(".env"));
+}
+
+#[test]
+fn run_index_skips_sensitive_code_files_and_audits_decision() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(tmp.path().join("src/auth.rs"), "fn validate_token() {}\n").expect("write auth");
+    fs::write(
+        tmp.path().join("src/secret_tokens.rs"),
+        "fn leaked_token_fixture() {}\n",
+    )
+    .expect("write secret");
+
+    let count = run_index(tmp.path(), &[]).expect("index");
+    assert_eq!(count, 1);
+
+    let matches = run_graph_query(tmp.path(), "leaked").expect("query");
+    assert!(matches.is_empty());
+
+    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit readable");
+    assert!(audit.contains("privacy_decision"));
+    assert!(audit.contains("src/secret_tokens.rs"));
+    assert!(audit.contains("\"decision\":\"excluded\""));
+    assert!(audit.contains("\"reason\":\"sensitive_pattern\""));
+}
+
+#[test]
 fn run_pack_appends_audit_log_entry() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");
@@ -68,6 +110,38 @@ fn run_pack_appends_audit_log_entry() {
 
     assert!(audit.contains("run_pack"));
     assert!(audit.contains("query=\"fix auth\""));
+}
+
+#[test]
+fn run_agent_invocation_records_fallback_metadata_when_binary_missing() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    let report = ctx_core::run_agent_invocation(
+        tmp.path(),
+        ctx_adapters::Agent::Claude,
+        "explain flaky test",
+        Some(500),
+        None,
+    )
+    .expect("run invocation");
+
+    assert_eq!(report.agent, "claude");
+    assert_eq!(report.status, "fallback");
+    assert!(report.fallback_used);
+    assert!(
+        report
+            .prompt_preview
+            .expect("fallback prompt")
+            .contains("[CTX COMPACT CONTEXT]")
+    );
+
+    let stats = std::fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
+    assert!(stats.contains("claude"));
+    assert!(stats.contains("fallback"));
+
+    let audit = std::fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit");
+    assert!(audit.contains("adapter_invocation"));
 }
 
 #[test]

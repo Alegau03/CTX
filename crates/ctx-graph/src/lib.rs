@@ -37,6 +37,36 @@ pub struct MemoryDirective {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunInsert {
+    pub command: String,
+    pub status: String,
+    pub agent: Option<String>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<u64>,
+    pub original_tokens: Option<usize>,
+    pub packed_tokens: Option<usize>,
+    pub reduction_pct: Option<f64>,
+    pub fallback_used: bool,
+    pub pack_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunRecord {
+    pub id: i64,
+    pub command: String,
+    pub status: String,
+    pub agent: Option<String>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<u64>,
+    pub original_tokens: Option<usize>,
+    pub packed_tokens: Option<usize>,
+    pub reduction_pct: Option<f64>,
+    pub fallback_used: bool,
+    pub pack_path: Option<String>,
+    pub created_at: String,
+}
+
 pub struct GraphStore {
     conn: Connection,
 }
@@ -58,7 +88,8 @@ impl GraphStore {
     pub fn init_schema(&self) -> Result<()> {
         self.conn
             .execute_batch(include_str!("schema.sql"))
-            .context("failed to initialize sqlite schema")
+            .context("failed to initialize sqlite schema")?;
+        self.migrate_runs_table()
     }
 
     pub fn index_file(&self, path: &str) -> Result<()> {
@@ -282,13 +313,86 @@ impl GraphStore {
     }
 
     pub fn record_run(&self, command: &str, status: &str) -> Result<i64> {
+        self.record_invocation_run(&RunInsert {
+            command: command.to_string(),
+            status: status.to_string(),
+            agent: None,
+            exit_code: None,
+            duration_ms: None,
+            original_tokens: None,
+            packed_tokens: None,
+            reduction_pct: None,
+            fallback_used: false,
+            pack_path: None,
+        })
+    }
+
+    pub fn record_invocation_run(&self, run: &RunInsert) -> Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO runs(command, status, created_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
-                params![command, status],
+                "INSERT INTO runs(
+                   command, status, agent, exit_code, duration_ms, original_tokens,
+                   packed_tokens, reduction_pct, fallback_used, pack_path, created_at
+                 )
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP)",
+                params![
+                    run.command,
+                    run.status,
+                    run.agent,
+                    run.exit_code,
+                    run.duration_ms.map(|value| value as i64),
+                    run.original_tokens.map(|value| value as i64),
+                    run.packed_tokens.map(|value| value as i64),
+                    run.reduction_pct,
+                    if run.fallback_used { 1 } else { 0 },
+                    run.pack_path,
+                ],
             )
             .context("failed to insert run")?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn recent_runs(&self, limit: usize) -> Result<Vec<RunRecord>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, command, status, agent, exit_code, duration_ms, original_tokens,
+                        packed_tokens, reduction_pct, fallback_used, pack_path, created_at
+                 FROM runs
+                 ORDER BY id DESC
+                 LIMIT ?1",
+            )
+            .context("failed to prepare recent_runs")?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                let duration_ms = row.get::<_, Option<i64>>(5)?.map(|value| value as u64);
+                let original_tokens = row.get::<_, Option<i64>>(6)?.map(|value| value as usize);
+                let packed_tokens = row.get::<_, Option<i64>>(7)?.map(|value| value as usize);
+                let fallback_used = row.get::<_, i64>(9)? != 0;
+
+                Ok(RunRecord {
+                    id: row.get(0)?,
+                    command: row.get(1)?,
+                    status: row.get(2)?,
+                    agent: row.get(3)?,
+                    exit_code: row.get(4)?,
+                    duration_ms,
+                    original_tokens,
+                    packed_tokens,
+                    reduction_pct: row.get(8)?,
+                    fallback_used,
+                    pack_path: row.get(10)?,
+                    created_at: row.get(11)?,
+                })
+            })
+            .context("failed to query recent_runs")?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.context("failed to decode run row")?);
+        }
+        Ok(out)
     }
 
     pub fn record_failure(
@@ -553,6 +657,69 @@ impl GraphStore {
             .execute("DELETE FROM memory_directives WHERE key = ?1", params![key])
             .context("failed to delete memory directive")?;
         Ok(affected > 0)
+    }
+
+    fn migrate_runs_table(&self) -> Result<()> {
+        self.ensure_column("runs", "agent", "ALTER TABLE runs ADD COLUMN agent TEXT")?;
+        self.ensure_column(
+            "runs",
+            "exit_code",
+            "ALTER TABLE runs ADD COLUMN exit_code INTEGER",
+        )?;
+        self.ensure_column(
+            "runs",
+            "duration_ms",
+            "ALTER TABLE runs ADD COLUMN duration_ms INTEGER",
+        )?;
+        self.ensure_column(
+            "runs",
+            "original_tokens",
+            "ALTER TABLE runs ADD COLUMN original_tokens INTEGER",
+        )?;
+        self.ensure_column(
+            "runs",
+            "packed_tokens",
+            "ALTER TABLE runs ADD COLUMN packed_tokens INTEGER",
+        )?;
+        self.ensure_column(
+            "runs",
+            "reduction_pct",
+            "ALTER TABLE runs ADD COLUMN reduction_pct REAL",
+        )?;
+        self.ensure_column(
+            "runs",
+            "fallback_used",
+            "ALTER TABLE runs ADD COLUMN fallback_used INTEGER NOT NULL DEFAULT 0",
+        )?;
+        self.ensure_column(
+            "runs",
+            "pack_path",
+            "ALTER TABLE runs ADD COLUMN pack_path TEXT",
+        )?;
+        self.conn
+            .execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_runs_agent_created_at ON runs(agent, created_at);",
+            )
+            .context("failed to create runs agent index")?;
+        Ok(())
+    }
+
+    fn ensure_column(&self, table: &str, column: &str, ddl: &str) -> Result<()> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .context("failed to inspect table columns")?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .context("failed to query table columns")?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        if !columns.iter().any(|existing| existing == column) {
+            self.conn
+                .execute_batch(ddl)
+                .with_context(|| format!("failed to add column {table}.{column}"))?;
+        }
+        Ok(())
     }
 
     fn file_id(&self, file_path: &str) -> Result<Option<i64>> {

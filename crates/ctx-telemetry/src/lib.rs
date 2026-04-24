@@ -1,15 +1,13 @@
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::Path;
+pub mod audit;
+pub mod stats;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatsSnapshot {
-    pub original_tokens: usize,
-    pub packed_tokens: usize,
-    pub reduction_pct: f64,
-    pub latency_ms: u64,
-}
+use serde::{Deserialize, Serialize};
+
+pub use audit::{
+    AuditEvent, PrivacyAuditEvent, append_audit_event, append_audit_line,
+    append_privacy_audit_event,
+};
+pub use stats::{StatsSnapshot, read_latest_stats, write_latest_stats};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkCaseResult {
@@ -32,20 +30,6 @@ pub struct BenchmarkSummary {
     pub avg_answer_quality: f64,
     pub avg_retrieval_precision_at_k: f64,
     pub case_count: usize,
-}
-
-pub fn write_latest_stats(stats_dir: &Path, snapshot: &StatsSnapshot) -> Result<()> {
-    fs::create_dir_all(stats_dir)
-        .with_context(|| format!("failed to create stats dir {}", stats_dir.display()))?;
-
-    let body = serde_json::to_string_pretty(snapshot).context("failed to serialize stats")?;
-    fs::write(stats_dir.join("latest.json"), body).context("failed to write latest stats")?;
-    Ok(())
-}
-
-pub fn read_latest_stats(stats_dir: &Path) -> Result<StatsSnapshot> {
-    let body = fs::read_to_string(stats_dir.join("latest.json")).context("failed to read stats")?;
-    serde_json::from_str(&body).context("failed to parse stats json")
 }
 
 pub fn build_benchmark_summary(cases: &[BenchmarkCaseResult]) -> BenchmarkSummary {

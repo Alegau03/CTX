@@ -105,6 +105,76 @@ fn record_failure_and_recent_decisions_are_queryable() {
 }
 
 #[test]
+fn invocation_runs_persist_full_metadata() {
+    let dir = tempdir().expect("tempdir");
+    let db = dir.path().join("graph.db");
+    let store = GraphStore::open(&db).expect("open");
+    store.init_schema().expect("schema");
+
+    let run_id = store
+        .record_invocation_run(&ctx_graph::RunInsert {
+            command: "claude -p \"fix auth\"".to_string(),
+            status: "succeeded".to_string(),
+            agent: Some("claude".to_string()),
+            exit_code: Some(0),
+            duration_ms: Some(42),
+            original_tokens: Some(1200),
+            packed_tokens: Some(240),
+            reduction_pct: Some(80.0),
+            fallback_used: false,
+            pack_path: Some(".ctx/packs/123.json".to_string()),
+        })
+        .expect("record run");
+
+    assert!(run_id > 0);
+    let runs = store.recent_runs(5).expect("recent runs");
+    assert_eq!(runs[0].agent.as_deref(), Some("claude"));
+    assert_eq!(runs[0].status, "succeeded");
+    assert_eq!(runs[0].packed_tokens, Some(240));
+    assert!(!runs[0].fallback_used);
+}
+
+#[test]
+fn init_schema_migrates_existing_runs_table() {
+    let dir = tempdir().expect("tempdir");
+    let db = dir.path().join("graph.db");
+    {
+        let conn = rusqlite::Connection::open(&db).expect("open raw");
+        conn.execute_batch(
+            "CREATE TABLE runs (
+              id INTEGER PRIMARY KEY,
+              task_id INTEGER,
+              command TEXT NOT NULL,
+              status TEXT NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );",
+        )
+        .expect("old schema");
+    }
+
+    let store = GraphStore::open(&db).expect("open store");
+    store.init_schema().expect("migrate schema");
+    store
+        .record_invocation_run(&ctx_graph::RunInsert {
+            command: "codex exec \"review\"".to_string(),
+            status: "fallback".to_string(),
+            agent: Some("codex".to_string()),
+            exit_code: None,
+            duration_ms: Some(1),
+            original_tokens: Some(100),
+            packed_tokens: Some(20),
+            reduction_pct: Some(80.0),
+            fallback_used: true,
+            pack_path: None,
+        })
+        .expect("record after migrate");
+
+    let runs = store.recent_runs(1).expect("recent");
+    assert_eq!(runs[0].agent.as_deref(), Some("codex"));
+    assert!(runs[0].fallback_used);
+}
+
+#[test]
 fn memory_directives_support_crud_and_search() {
     let dir = tempdir().expect("tempdir");
     let db = dir.path().join("graph.db");

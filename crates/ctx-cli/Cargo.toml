@@ -16,6 +16,7 @@ clap.workspace = true
 ctx-core = { path = "../ctx-core" }
 ctx-adapters = { path = "../ctx-adapters" }
 ctx-intake = { path = "../ctx-intake" }
+ctx-hooks = { path = "../ctx-hooks" }
 ctx-mcp = { path = "../ctx-mcp" }
 serde_json.workspace = true
 

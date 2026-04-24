@@ -360,10 +360,10 @@
 - Modify: `crates/ctx-telemetry/src/audit.rs`
 - Test: `tests/e2e/test_privacy_defaults.rs`
 
-- [ ] Step 1: Enforce defaults: no remote upload, telemetry opt-in off, local storage only.
-- [ ] Step 2: Implement ignore rules for sensitive file patterns.
-- [ ] Step 3: Provide auditability for include/exclude decisions.
-- [ ] Step 4: Add threat model doc for local trust assumptions.
+- [x] Step 1: Enforce defaults: no remote upload, telemetry opt-in off, local storage only.
+- [x] Step 2: Implement ignore rules for sensitive file patterns.
+- [x] Step 3: Provide auditability for include/exclude decisions.
+- [x] Step 4: Add threat model doc for local trust assumptions.
 - [ ] Step 5: Commit security/privacy controls.
 
 **Acceptance Criteria:** privacy posture is explicit, verifiable, and safe-by-default.
@@ -376,10 +376,10 @@
 - Create: `docs/install.md`
 - Test: `tests/e2e/test_installation_smoke.rs`
 
-- [ ] Step 1: Produce release artifacts for macOS/Linux.
-- [ ] Step 2: Document install paths: Homebrew, Cargo, GitHub Releases binaries.
-- [ ] Step 3: Ensure first-run flow: `ctx init`, `ctx index`, `ctx stats`.
-- [ ] Step 4: Add installation smoke checks in CI release pipeline.
+- [x] Step 1: Produce release artifacts for macOS/Linux.
+- [x] Step 2: Document install paths: Homebrew, Cargo, GitHub Releases binaries.
+- [x] Step 3: Ensure first-run flow: `ctx init`, `ctx index`, `ctx stats`.
+- [x] Step 4: Add installation smoke checks in CI release pipeline.
 - [ ] Step 5: Commit packaging.
 
 **Acceptance Criteria:** users can install and run first useful command sequence in <10 minutes.
@@ -449,7 +449,8 @@
 - [ ] Step 4: Track stack-specific rule packs (PyTorch/FastAPI/React/Next.js/Rust crates).
 - [ ] Step 5: Track active learning for relevance ranking.
 - [ ] Step 6: Track export of shareable project capsules.
-- [ ] Step 7: Commit explicit post-MVP backlog.
+- [ ] Step 7: Track interactive command autocomplete popup/menu with fuzzy suggestions, short descriptions, examples, and parameter previews.
+- [ ] Step 8: Commit explicit post-MVP backlog.
 
 **Acceptance Criteria:** every future extension from PDF is preserved with ownership and status.
 

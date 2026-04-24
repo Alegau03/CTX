@@ -28,5 +28,11 @@ enabled = true
 port = 8765
 
 [security]
+local_only = true
+remote_upload_enabled = false
+anonymous_telemetry_enabled = false
+local_stats_enabled = true
+audit_include_exclude = true
 exclude_sensitive_files = true
 sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
+ignored_dirs = [".git", ".ctx", "target", "node_modules", "build", "dist", "artifacts", ".next", ".cache", "coverage"]

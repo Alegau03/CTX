@@ -25,6 +25,46 @@ fn init_creates_ctx_config() {
 }
 
 #[test]
+fn doctor_reports_missing_first_run_state_and_next_step() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("doctor")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CTX Doctor"))
+        .stdout(predicate::str::contains("config: missing"))
+        .stdout(predicate::str::contains("next: ctx init"));
+}
+
+#[test]
+fn doctor_reports_ready_repo_after_init() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("doctor")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("config: ok"))
+        .stdout(predicate::str::contains("graph: ok"))
+        .stdout(predicate::str::contains("audit_log: ok"))
+        .stdout(predicate::str::contains("local_only: true"))
+        .stdout(predicate::str::contains("remote_upload_enabled: false"))
+        .stdout(predicate::str::contains("next: ctx index"));
+}
+
+#[test]
 fn prune_logs_reads_stdin_and_outputs_error_lines() {
     Command::cargo_bin("ctx")
         .expect("bin")
@@ -84,9 +124,12 @@ fn pack_json_outputs_expected_shape() {
 
 #[test]
 fn explain_returns_intent_information() {
+    let tmp = tempdir().expect("tempdir");
+
     Command::cargo_bin("ctx")
         .expect("bin")
         .args(["explain", "fix failing pytest"])
+        .current_dir(tmp.path())
         .assert()
         .success()
         .stdout(predicate::str::contains("intent: debug"));
@@ -116,6 +159,204 @@ fn stats_shows_latest_snapshot_after_pack() {
         .assert()
         .success()
         .stdout(predicate::str::contains("packed_tokens"));
+}
+
+#[test]
+fn claude_wrapper_uses_real_adapter_path_and_fallback_output() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["claude", "explain flaky test"])
+        .current_dir(tmp.path())
+        .env("PATH", "")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("adapter=claude"))
+        .stdout(predicate::str::contains("command=claude -p"))
+        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
+
+    assert!(tmp.path().join(".ctx/stats/latest.json").exists());
+}
+
+#[test]
+fn adapter_wrapper_json_outputs_run_report() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["codex", "review risky diff", "--json"])
+        .current_dir(tmp.path())
+        .env("PATH", "")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"agent\": \"codex\""))
+        .stdout(predicate::str::contains("\"status\": \"fallback\""))
+        .stdout(predicate::str::contains("\"fallback_used\": true"));
+}
+
+#[test]
+fn stats_after_adapter_run_includes_agent_latency_and_fallback() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["claude", "explain flaky test"])
+        .current_dir(tmp.path())
+        .env("PATH", "")
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("stats")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("original_tokens"))
+        .stdout(predicate::str::contains("packed_tokens"))
+        .stdout(predicate::str::contains("latency_ms"))
+        .stdout(predicate::str::contains("agent"))
+        .stdout(predicate::str::contains("fallback_used"));
+}
+
+#[test]
+fn adapter_json_contract_contains_required_fields() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["opencode", "run", "explain this diff", "--json"])
+        .current_dir(tmp.path())
+        .env("PATH", "")
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(value["agent"], "opencode");
+    assert!(value["command"].as_str().unwrap().contains("opencode run"));
+    assert_eq!(value["status"], "fallback");
+    assert_eq!(value["fallback_used"], true);
+    assert!(value["original_tokens"].as_u64().is_some());
+    assert!(value["packed_tokens"].as_u64().is_some());
+    assert!(value["reduction_pct"].is_number());
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_wrapper_invokes_fake_claude_binary_and_records_success() {
+    let tmp = tempdir().expect("tempdir");
+    let bin_dir = tmp.path().join("bin");
+    fs::create_dir_all(&bin_dir).expect("mkdir bin");
+    write_shell_script(&bin_dir.join("claude"), "#!/bin/sh\nexit 0\n");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["claude", "explain flaky test"])
+        .current_dir(tmp.path())
+        .env("PATH", path_with_bin(&bin_dir))
+        .assert()
+        .success();
+
+    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
+    assert!(stats.contains("claude"));
+    assert!(stats.contains("succeeded"));
+
+    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit");
+    assert!(audit.contains("adapter_invocation"));
+    assert!(audit.contains("claude"));
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_wrapper_invokes_fake_codex_binary_and_records_success() {
+    let tmp = tempdir().expect("tempdir");
+    let bin_dir = tmp.path().join("bin");
+    fs::create_dir_all(&bin_dir).expect("mkdir bin");
+    write_shell_script(&bin_dir.join("codex"), "#!/bin/sh\nexit 0\n");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["codex", "review diff"])
+        .current_dir(tmp.path())
+        .env("PATH", path_with_bin(&bin_dir))
+        .assert()
+        .success();
+
+    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
+    assert!(stats.contains("codex"));
+    assert!(stats.contains("succeeded"));
+}
+
+#[cfg(unix)]
+#[test]
+fn opencode_wrapper_invokes_fake_opencode_binary_and_records_success() {
+    let tmp = tempdir().expect("tempdir");
+    let bin_dir = tmp.path().join("bin");
+    fs::create_dir_all(&bin_dir).expect("mkdir bin");
+    write_shell_script(&bin_dir.join("opencode"), "#!/bin/sh\nexit 0\n");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["opencode", "run", "explain diff"])
+        .current_dir(tmp.path())
+        .env("PATH", path_with_bin(&bin_dir))
+        .assert()
+        .success();
+
+    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
+    assert!(stats.contains("opencode"));
+    assert!(stats.contains("succeeded"));
 }
 
 #[test]
@@ -214,6 +455,90 @@ fn retrieve_returns_ranked_hits() {
 }
 
 #[test]
+fn ask_command_builds_compact_context_without_invoking_agent() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["ask", "where is retry logic"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("query: where is retry logic"));
+}
+
+#[test]
+fn hook_command_outputs_pre_prompt_payload_for_agent_hooks() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["hook", "fix flaky test"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Task: fix flaky test"))
+        .stdout(predicate::str::contains("Compact Context:"))
+        .stdout(predicate::str::contains("Instruction:"));
+}
+
+#[test]
+fn wrap_command_routes_to_selected_adapter_with_fallback() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["wrap", "claude", "--prompt", "explain auth failure"])
+        .current_dir(tmp.path())
+        .env("PATH", "")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("adapter=claude"))
+        .stdout(predicate::str::contains("command=claude -p"))
+        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
+}
+
+#[test]
+fn mcp_config_claude_outputs_stdio_configuration() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["mcp", "config", "claude"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"mcpServers\""))
+        .stdout(predicate::str::contains("\"ctx\""))
+        .stdout(predicate::str::contains("\"mcp\""))
+        .stdout(predicate::str::contains("\"stdio\""))
+        .stdout(predicate::str::contains(
+            tmp.path().to_string_lossy().as_ref(),
+        ));
+}
+
+#[test]
+fn mcp_stdio_handles_initialize_message() {
+    let tmp = tempdir().expect("tempdir");
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["mcp", "stdio"])
+        .current_dir(tmp.path())
+        .write_stdin("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"serverInfo\""))
+        .stdout(predicate::str::contains("\"ctx-mcp\""));
+}
+
+#[test]
 fn help_command_prints_command_guide_with_examples() {
     Command::cargo_bin("ctx")
         .expect("bin")
@@ -226,8 +551,40 @@ fn help_command_prints_command_guide_with_examples() {
             "Example: ctx pack \"fix failing pytest in auth\" --json --attach /tmp/fail.txt",
         ))
         .stdout(predicate::str::contains("ctx mcp serve --port 8765"))
+        .stdout(predicate::str::contains("ctx ask"))
+        .stdout(predicate::str::contains("ctx wrap"))
+        .stdout(predicate::str::contains("ctx hook"))
+        .stdout(predicate::str::contains("ctx mcp stdio"))
         .stdout(predicate::str::contains("ctx memory set"))
-        .stdout(predicate::str::contains("ctx benchmark memory-ab"));
+        .stdout(predicate::str::contains("ctx benchmark memory-ab"))
+        .stdout(predicate::str::contains("ctx doctor"));
+}
+
+#[test]
+fn release_assets_are_present_and_document_install_paths() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let build_script = fs::read_to_string(root.join("scripts/release/build.sh"))
+        .expect("release build script should exist");
+    let smoke_script = fs::read_to_string(root.join("scripts/release/install-smoke.sh"))
+        .expect("install smoke script should exist");
+    let formula =
+        fs::read_to_string(root.join("Formula/ctx.rb")).expect("homebrew formula should exist");
+    let install_docs =
+        fs::read_to_string(root.join("docs/install.md")).expect("install docs should exist");
+
+    assert!(build_script.contains("build --release"));
+    assert!(build_script.contains("SHA256SUMS"));
+    assert!(build_script.contains("tar"));
+    assert!(smoke_script.contains("doctor"));
+    assert!(smoke_script.contains("mcp stdio"));
+    assert!(formula.contains("class Ctx < Formula"));
+    assert!(formula.contains("\"cargo\", \"install\""));
+    assert!(formula.contains("\"doctor\""));
+    assert!(install_docs.contains("Homebrew"));
+    assert!(install_docs.contains("GitHub Releases"));
+    assert!(install_docs.contains("cargo install"));
+    assert!(install_docs.contains("ctx doctor"));
 }
 
 #[test]
@@ -238,7 +595,7 @@ fn codex_wrapper_invokes_real_codex_binary_when_available() {
     fs::create_dir_all(&bin_dir).expect("mkdir");
     write_shell_script(
         &bin_dir.join("codex"),
-        "#!/bin/sh\nprintf 'FAKE-CODEX\\n'\nprintf '%s\\n' \"$1\"\n",
+        "#!/bin/sh\nprintf 'FAKE-CODEX\\n'\nprintf 'subcommand:%s\\n' \"$1\"\nprintf '%s\\n' \"$2\"\n",
     );
 
     Command::cargo_bin("ctx")
@@ -249,6 +606,7 @@ fn codex_wrapper_invokes_real_codex_binary_when_available() {
         .assert()
         .success()
         .stdout(predicate::str::contains("FAKE-CODEX"))
+        .stdout(predicate::str::contains("subcommand:exec"))
         .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
 }
 

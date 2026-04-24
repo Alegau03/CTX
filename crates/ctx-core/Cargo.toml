@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 ctx-config = { path = "../ctx-config" }
+ctx-adapters = { path = "../ctx-adapters" }
 ctx-ast = { path = "../ctx-ast" }
 ctx-graph = { path = "../ctx-graph" }
 ctx-intake = { path = "../ctx-intake" }
