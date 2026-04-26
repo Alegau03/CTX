@@ -1,0 +1,10 @@
+title = "CTX Memory Benchmark"
+
+[[cases]]
+name = "auth_rules"
+query = "run tests and fix root cause"
+markdown = "../AGENTS.md"
+limit = 20
+checklist = "../quality-checklist.md"
+markdown_answer = "../markdown-answer.txt"
+graph_answer = "../graph-answer.txt"

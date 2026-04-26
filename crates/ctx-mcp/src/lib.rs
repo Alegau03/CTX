@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use ctx_core::{
-    run_graph_query, run_memory_delete, run_memory_get, run_memory_import_markdown,
-    run_memory_list, run_memory_set, run_pack, run_prune_diff,
+    run_graph_query, run_memory_bootstrap_markdown, run_memory_delete, run_memory_get,
+    run_memory_import_markdown, run_memory_list, run_memory_search, run_memory_set, run_pack,
+    run_prune_diff,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -86,12 +87,20 @@ pub fn default_tools() -> Vec<McpTool> {
             description: "Get one graph memory directive",
         },
         McpTool {
+            name: "memory_search",
+            description: "Search graph memory directives by topic",
+        },
+        McpTool {
             name: "memory_delete",
             description: "Delete one graph memory directive",
         },
         McpTool {
             name: "memory_import_markdown",
             description: "Import AGENTS/CLAUDE/CODEX markdown rules into graph memory",
+        },
+        McpTool {
+            name: "memory_bootstrap_markdown",
+            description: "Auto-import conventional markdown rule files into graph memory",
         },
     ]
 }
@@ -293,6 +302,16 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
             let directive = run_memory_get(&cfg.repo_root, key)?;
             Ok(json!({"directive": directive}))
         }
+        "memory_search" => {
+            let query = args
+                .get("query")
+                .and_then(Value::as_str)
+                .context("memory_search requires arguments.query")?;
+            let scope = args.get("scope").and_then(Value::as_str);
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize;
+            let directives = run_memory_search(&cfg.repo_root, query, scope, limit)?;
+            Ok(json!({"directives": directives}))
+        }
         "memory_delete" => {
             let key = args
                 .get("key")
@@ -322,6 +341,29 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
                 source,
                 prefix,
             )?;
+            Ok(json!({"report": report}))
+        }
+        "memory_bootstrap_markdown" => {
+            let paths = args
+                .get("paths")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(|item| resolve_path(&cfg.repo_root, item))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let scope = args
+                .get("scope")
+                .and_then(Value::as_str)
+                .unwrap_or("project");
+            let source = args
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("markdown");
+            let report = run_memory_bootstrap_markdown(&cfg.repo_root, &paths, scope, source)?;
             Ok(json!({"report": report}))
         }
         "get_compact_diff" => {

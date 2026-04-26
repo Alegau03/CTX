@@ -186,6 +186,38 @@ impl GraphStore {
         Ok(out)
     }
 
+    pub fn find_symbols_by_exact_name(&self, name: &str, limit: usize) -> Result<Vec<SymbolHit>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT s.id, f.path, s.name, s.kind, COALESCE(s.signature, '')
+                 FROM symbols s
+                 JOIN files f ON f.id = s.file_id
+                 WHERE s.name = ?1
+                 ORDER BY s.updated_at DESC, s.id DESC
+                 LIMIT ?2",
+            )
+            .context("failed to prepare find_symbols_by_exact_name")?;
+
+        let rows = stmt
+            .query_map(params![name, limit as i64], |row| {
+                Ok(SymbolHit {
+                    id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    name: row.get(2)?,
+                    kind: row.get(3)?,
+                    signature: row.get(4)?,
+                })
+            })
+            .context("failed to run find_symbols_by_exact_name")?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.context("failed to decode exact symbol row")?);
+        }
+        Ok(out)
+    }
+
     pub fn link_symbols(
         &self,
         src_symbol_id: i64,
@@ -657,6 +689,18 @@ impl GraphStore {
             .execute("DELETE FROM memory_directives WHERE key = ?1", params![key])
             .context("failed to delete memory directive")?;
         Ok(affected > 0)
+    }
+
+    pub fn delete_memory_directives_by_prefix(&self, prefix: &str) -> Result<usize> {
+        let pattern = format!("{prefix}.%");
+        let affected = self
+            .conn
+            .execute(
+                "DELETE FROM memory_directives WHERE key = ?1 OR key LIKE ?2",
+                params![prefix, pattern],
+            )
+            .context("failed to delete memory directives by prefix")?;
+        Ok(affected)
     }
 
     fn migrate_runs_table(&self) -> Result<()> {

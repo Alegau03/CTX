@@ -61,16 +61,12 @@ pub fn rewrite_root_cause(root_cause: &str) -> PackSection {
 pub fn rewrite_symbol(raw: &str) -> PackSection {
     let trimmed = raw.trim();
     let (path, rest) = split_once_any(trimmed, &["::", ":"]).unwrap_or(("unknown", trimmed));
-    let signature = extract_signature(rest);
+    let name = symbol_name(rest);
     let imports = extract_significant_imports(trimmed);
     let line_ref = extract_line_ref(trimmed).unwrap_or_else(|| "unknown".to_string());
     let mut content = format!(
-        "{} sig:{} lines:{} imports:{} relationships:{}",
-        path.trim(),
-        signature,
-        line_ref,
-        imports,
-        "direct"
+        "{} lines:{} imports:{} relationships:{}",
+        name, line_ref, imports, "1"
     );
     content = compact_words(&content, 10);
 
@@ -97,12 +93,24 @@ pub fn rewrite_diff(raw: &str) -> PackSection {
     let mut files = Vec::new();
     let mut additions = 0usize;
     let mut removals = 0usize;
+    let mut changed_symbols = Vec::new();
 
     for line in raw.lines() {
         if let Some(rest) = line.strip_prefix("diff --git ") {
-            files.push(rest.replace(" a/", " ").replace(" b/", " "));
+            let normalized = rest.replace(" a/", " ").replace(" b/", " ");
+            push_unique(
+                &mut files,
+                normalized
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or(&normalized)
+                    .to_string(),
+            );
         } else if line.starts_with('+') && !line.starts_with("+++") {
             additions += 1;
+            if let Some(symbol) = changed_symbol_from_diff_line(line) {
+                push_unique(&mut changed_symbols, symbol);
+            }
         } else if line.starts_with('-') && !line.starts_with("---") {
             removals += 1;
         }
@@ -115,15 +123,22 @@ pub fn rewrite_diff(raw: &str) -> PackSection {
     let file_summary = if files.is_empty() {
         "unknown".to_string()
     } else {
-        compact_words(&files.join(","), 2)
+        compact_list(&files, 2)
     };
 
     PackSection {
         label: "recent_diff".to_string(),
         priority: Priority::RecentDiff,
         content: format!(
-            "diff_files:{} changes:+{}/-{}",
-            file_summary, additions, removals
+            "diff_files:{} changed_symbols:{} changes:+{}/-{}",
+            file_summary,
+            if changed_symbols.is_empty() {
+                "n/a".to_string()
+            } else {
+                compact_list(&changed_symbols, 4)
+            },
+            additions,
+            removals
         ),
         source_ref: String::new(),
         required: false,
@@ -144,7 +159,7 @@ pub fn rewrite_memory(label: &str, priority: Priority, raw: &str) -> PackSection
     PackSection {
         label: label.to_string(),
         priority,
-        content: compact_words(strip_memory_prefix(raw), 10),
+        content: compact_words(strip_memory_prefix(raw), 6),
         source_ref: memory_source(raw),
         required: false,
     }
@@ -154,7 +169,7 @@ pub fn rewrite_doc(raw: &str) -> PackSection {
     PackSection {
         label: "docs".to_string(),
         priority: Priority::Docs,
-        content: compact_words(raw, 16),
+        content: compact_words(raw, 6),
         source_ref: source_from_path_like(raw),
         required: false,
     }
@@ -169,8 +184,13 @@ pub fn compact_to_fit(section: &PackSection, max_tokens: usize) -> Option<PackSe
     }
 
     let mut compacted = section.clone();
-    for limit in [24usize, 16, 10, 6, 3, 2, 1] {
-        compacted.content = compact_words(&section.content, limit);
+    let limits: &[usize] = match section.priority {
+        Priority::Docs => &[12, 8, 6, 4],
+        _ => &[24, 16, 10, 6, 3, 2, 1],
+    };
+
+    for limit in limits {
+        compacted.content = compact_words(&section.content, *limit);
         if compacted.tokens() <= max_tokens {
             return Some(compacted);
         }
@@ -209,30 +229,6 @@ fn split_once_any<'a>(text: &'a str, needles: &[&str]) -> Option<(&'a str, &'a s
         .iter()
         .filter_map(|needle| text.split_once(needle))
         .next()
-}
-
-fn extract_signature(text: &str) -> String {
-    let trimmed = text.trim();
-    if let Some(fn_pos) = trimmed.find("fn ") {
-        let sig = &trimmed[fn_pos..];
-        if let Some(end) = sig.find(')') {
-            let head = sig[..end]
-                .split('(')
-                .next()
-                .unwrap_or(sig[..end].trim())
-                .trim();
-            return format!("{}(...)", head);
-        }
-        return sig.split('{').next().unwrap_or(sig).trim().to_string();
-    }
-    trimmed
-        .split('{')
-        .next()
-        .unwrap_or(trimmed)
-        .split_whitespace()
-        .take(6)
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn extract_significant_imports(text: &str) -> String {
@@ -295,4 +291,67 @@ fn memory_source(raw: &str) -> String {
         .next()
         .unwrap_or("memory")
         .to_string()
+}
+
+fn symbol_name(rest: &str) -> &str {
+    let trimmed = rest.trim();
+    for prefix in ["pub fn ", "fn ", "def ", "function "] {
+        if let Some(stripped) = trimmed.strip_prefix(prefix) {
+            return stripped
+                .split(|ch: char| ch == '(' || ch.is_whitespace() || ch == '{')
+                .next()
+                .unwrap_or(trimmed)
+                .trim();
+        }
+    }
+
+    trimmed
+        .split(|ch: char| ch == '(' || ch.is_whitespace() || ch == '{')
+        .find(|value| !value.is_empty())
+        .unwrap_or(trimmed)
+        .trim()
+}
+
+fn changed_symbol_from_diff_line(line: &str) -> Option<String> {
+    let trimmed = line.trim_start_matches('+').trim_start_matches('-').trim();
+
+    for prefix in ["fn ", "pub fn ", "def ", "function "] {
+        if let Some(rest) = trimmed.strip_prefix(prefix) {
+            return rest
+                .split(|ch: char| ch == '(' || ch.is_whitespace() || ch == '{')
+                .next()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+        }
+    }
+
+    if let Some((left, _)) = trimmed.split_once("=>") {
+        return left
+            .split(|ch: char| ch == '=' || ch == ':' || ch.is_whitespace())
+            .filter(|value| !value.is_empty())
+            .next_back()
+            .map(ToOwned::to_owned);
+    }
+
+    None
+}
+
+fn push_unique(items: &mut Vec<String>, value: String) {
+    if !items.iter().any(|existing| existing == &value) {
+        items.push(value);
+    }
+}
+
+fn compact_list(items: &[String], max_items: usize) -> String {
+    let slice = if items.len() > max_items {
+        &items[..max_items]
+    } else {
+        items
+    };
+    let mut rendered = slice.join(",");
+    if items.len() > max_items {
+        rendered.push_str(",...");
+    }
+    rendered
 }

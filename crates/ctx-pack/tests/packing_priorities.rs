@@ -69,6 +69,7 @@ fn rewriter_preserves_traceability_while_compressing_blocks() {
     assert!(context.contains("lines:"));
     assert!(context.contains("relationships:"));
     assert!(context.contains("diff_files:"));
+    assert!(context.contains("changed_symbols:"));
     assert!(context.contains("changes:"));
     assert!(context.len() < rich_input(120).recent_diff.unwrap().len() + 500);
 }

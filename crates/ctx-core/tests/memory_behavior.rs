@@ -1,8 +1,9 @@
 use std::fs;
 
 use ctx_core::{
-    init_repo, run_memory_ab_benchmark, run_memory_delete, run_memory_export_markdown,
-    run_memory_get, run_memory_import_markdown, run_memory_list, run_memory_set, run_pack,
+    init_repo, run_memory_ab_benchmark, run_memory_ab_benchmark_suite,
+    run_memory_bootstrap_markdown, run_memory_delete, run_memory_export_markdown, run_memory_get,
+    run_memory_import_markdown, run_memory_list, run_memory_search, run_memory_set, run_pack,
 };
 use tempfile::tempdir;
 
@@ -152,6 +153,130 @@ fn memory_import_and_export_markdown_roundtrip() {
 }
 
 #[test]
+fn memory_bootstrap_imports_default_agents_style_files() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Team Rules\n- Run targeted tests before completion.\n- Fix root cause before merge.\n",
+    )
+    .expect("write agents");
+    fs::create_dir_all(tmp.path().join(".github")).expect("create .github");
+    fs::write(
+        tmp.path().join(".github/copilot-instructions.md"),
+        "# Copilot Instructions\n- Prefer auth-focused fixtures for token tests.\n",
+    )
+    .expect("write copilot instructions");
+
+    let report = run_memory_bootstrap_markdown(tmp.path(), &[], "project", "markdown")
+        .expect("bootstrap markdown");
+
+    assert_eq!(report.imported_files, 2);
+    assert!(report.imported_directives >= 3);
+    assert!(
+        report
+            .reports
+            .iter()
+            .any(|item| item.markdown_path.ends_with("AGENTS.md"))
+    );
+    assert!(report.reports.iter().any(|item| {
+        item.markdown_path
+            .ends_with(".github/copilot-instructions.md")
+    }));
+
+    let directives = run_memory_list(tmp.path(), Some("project"), 20).expect("list directives");
+    assert!(
+        directives
+            .iter()
+            .any(|item| item.body.contains("Run targeted tests before completion"))
+    );
+    assert!(
+        directives
+            .iter()
+            .any(|item| item.body.contains("Prefer auth-focused fixtures"))
+    );
+}
+
+#[test]
+fn memory_search_returns_relevant_directives_for_a_topic() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    run_memory_set(
+        tmp.path(),
+        "testing.always_run",
+        "Run targeted tests before completion and before merge.",
+        "project",
+        "manual",
+    )
+    .expect("set tests rule");
+    run_memory_set(
+        tmp.path(),
+        "auth.root_cause",
+        "Fix auth root cause instead of bypassing refresh token failures.",
+        "project",
+        "manual",
+    )
+    .expect("set auth rule");
+    run_memory_set(
+        tmp.path(),
+        "style.docs",
+        "Keep guides concise and update examples when behavior changes.",
+        "project",
+        "manual",
+    )
+    .expect("set docs rule");
+
+    let results = run_memory_search(tmp.path(), "auth tests root cause", Some("project"), 10)
+        .expect("search memory");
+
+    assert!(results.len() >= 2);
+    assert_eq!(results[0].key, "auth.root_cause");
+    assert!(results.iter().any(|item| item.key == "testing.always_run"));
+    assert!(results.iter().all(|item| item.scope == "project"));
+}
+
+#[test]
+fn reimporting_markdown_replaces_stale_directives_for_the_same_prefix() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    let agents = tmp.path().join("AGENTS.md");
+    fs::write(
+        &agents,
+        "# Rules\n- Run targeted tests before completion.\n- Fix auth root cause before merge.\n",
+    )
+    .expect("write agents");
+
+    run_memory_import_markdown(tmp.path(), &agents, "project", "markdown", Some("agents"))
+        .expect("first import");
+
+    fs::write(
+        &agents,
+        "# Rules\n- Run targeted tests before completion.\n",
+    )
+    .expect("rewrite agents");
+
+    run_memory_import_markdown(tmp.path(), &agents, "project", "markdown", Some("agents"))
+        .expect("second import");
+
+    let directives = run_memory_list(tmp.path(), Some("project"), 20).expect("list directives");
+    assert_eq!(
+        directives
+            .iter()
+            .filter(|item| item.key.starts_with("agents."))
+            .count(),
+        1
+    );
+    assert!(
+        directives
+            .iter()
+            .all(|item| !item.body.contains("Fix auth root cause"))
+    );
+}
+
+#[test]
 fn memory_ab_benchmark_evaluates_quality_with_checklist_and_answers() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");
@@ -215,4 +340,92 @@ fn memory_ab_benchmark_evaluates_quality_with_checklist_and_answers() {
     assert!(result.markdown_success_rate.is_some());
     assert!(result.graph_success_rate.is_some());
     assert_eq!(result.quality_winner.as_deref(), Some("graph"));
+}
+
+#[test]
+fn memory_ab_benchmark_suite_writes_publishable_reports() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    run_memory_set(
+        tmp.path(),
+        "tests.required",
+        "Run tests before merge.",
+        "project",
+        "manual",
+    )
+    .expect("set");
+    run_memory_set(
+        tmp.path(),
+        "quality.root_cause",
+        "Fix root cause and avoid temporary bypasses.",
+        "project",
+        "manual",
+    )
+    .expect("set");
+
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run tests before merge.\n- Keep backward compatibility.\n",
+    )
+    .expect("write markdown");
+    fs::write(
+        tmp.path().join("checklist.md"),
+        "- Run tests before merge.\n- Fix root cause and avoid temporary bypasses.\n",
+    )
+    .expect("write checklist");
+    fs::write(
+        tmp.path().join("markdown_answer.txt"),
+        "I will run tests before merge.",
+    )
+    .expect("write markdown answer");
+    fs::write(
+        tmp.path().join("graph_answer.txt"),
+        "I will run tests before merge and fix root cause and avoid temporary bypasses.",
+    )
+    .expect("write graph answer");
+
+    let spec = tmp.path().join("memory-suite.toml");
+    fs::write(
+        &spec,
+        r#"
+title = "CTX Memory Benchmark"
+
+[[cases]]
+name = "auth_rules"
+query = "run tests and fix root cause"
+markdown = "AGENTS.md"
+limit = 20
+checklist = "checklist.md"
+markdown_answer = "markdown_answer.txt"
+graph_answer = "graph_answer.txt"
+"#,
+    )
+    .expect("write spec");
+
+    let report_md = tmp.path().join("benchmark-report.md");
+    let report_json = tmp.path().join("benchmark-report.json");
+
+    let report = run_memory_ab_benchmark_suite(tmp.path(), &spec, &report_md, Some(&report_json))
+        .expect("suite");
+
+    assert_eq!(report.summary.case_count, 1);
+    assert!(report.summary.avg_token_reduction_pct.is_finite());
+    assert!(
+        report.summary.graph_quality_wins
+            + report.summary.markdown_quality_wins
+            + report.summary.ties
+            <= report.summary.case_count
+    );
+    assert!(report_md.exists());
+    assert!(report_json.exists());
+
+    let markdown = fs::read_to_string(&report_md).expect("read markdown report");
+    assert!(markdown.contains("# CTX Memory Benchmark"));
+    assert!(markdown.contains("auth_rules"));
+    assert!(markdown.contains("Token reduction"));
+
+    let json = fs::read_to_string(&report_json).expect("read json report");
+    assert!(json.contains("\"case_count\": 1"));
+    assert!(json.contains("\"graph_quality_wins\":"));
 }

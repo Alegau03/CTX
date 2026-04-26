@@ -3,8 +3,6 @@ use predicates::prelude::*;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
@@ -162,204 +160,6 @@ fn stats_shows_latest_snapshot_after_pack() {
 }
 
 #[test]
-fn claude_wrapper_uses_real_adapter_path_and_fallback_output() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["claude", "explain flaky test"])
-        .current_dir(tmp.path())
-        .env("PATH", "")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("adapter=claude"))
-        .stdout(predicate::str::contains("command=claude -p"))
-        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
-
-    assert!(tmp.path().join(".ctx/stats/latest.json").exists());
-}
-
-#[test]
-fn adapter_wrapper_json_outputs_run_report() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["codex", "review risky diff", "--json"])
-        .current_dir(tmp.path())
-        .env("PATH", "")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"agent\": \"codex\""))
-        .stdout(predicate::str::contains("\"status\": \"fallback\""))
-        .stdout(predicate::str::contains("\"fallback_used\": true"));
-}
-
-#[test]
-fn stats_after_adapter_run_includes_agent_latency_and_fallback() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["claude", "explain flaky test"])
-        .current_dir(tmp.path())
-        .env("PATH", "")
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("stats")
-        .current_dir(tmp.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("original_tokens"))
-        .stdout(predicate::str::contains("packed_tokens"))
-        .stdout(predicate::str::contains("latency_ms"))
-        .stdout(predicate::str::contains("agent"))
-        .stdout(predicate::str::contains("fallback_used"));
-}
-
-#[test]
-fn adapter_json_contract_contains_required_fields() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    let output = Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["opencode", "run", "explain this diff", "--json"])
-        .current_dir(tmp.path())
-        .env("PATH", "")
-        .output()
-        .expect("run ctx");
-
-    assert!(output.status.success());
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(value["agent"], "opencode");
-    assert!(value["command"].as_str().unwrap().contains("opencode run"));
-    assert_eq!(value["status"], "fallback");
-    assert_eq!(value["fallback_used"], true);
-    assert!(value["original_tokens"].as_u64().is_some());
-    assert!(value["packed_tokens"].as_u64().is_some());
-    assert!(value["reduction_pct"].is_number());
-}
-
-#[cfg(unix)]
-#[test]
-fn claude_wrapper_invokes_fake_claude_binary_and_records_success() {
-    let tmp = tempdir().expect("tempdir");
-    let bin_dir = tmp.path().join("bin");
-    fs::create_dir_all(&bin_dir).expect("mkdir bin");
-    write_shell_script(&bin_dir.join("claude"), "#!/bin/sh\nexit 0\n");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["claude", "explain flaky test"])
-        .current_dir(tmp.path())
-        .env("PATH", path_with_bin(&bin_dir))
-        .assert()
-        .success();
-
-    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
-    assert!(stats.contains("claude"));
-    assert!(stats.contains("succeeded"));
-
-    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit");
-    assert!(audit.contains("adapter_invocation"));
-    assert!(audit.contains("claude"));
-}
-
-#[cfg(unix)]
-#[test]
-fn codex_wrapper_invokes_fake_codex_binary_and_records_success() {
-    let tmp = tempdir().expect("tempdir");
-    let bin_dir = tmp.path().join("bin");
-    fs::create_dir_all(&bin_dir).expect("mkdir bin");
-    write_shell_script(&bin_dir.join("codex"), "#!/bin/sh\nexit 0\n");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["codex", "review diff"])
-        .current_dir(tmp.path())
-        .env("PATH", path_with_bin(&bin_dir))
-        .assert()
-        .success();
-
-    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
-    assert!(stats.contains("codex"));
-    assert!(stats.contains("succeeded"));
-}
-
-#[cfg(unix)]
-#[test]
-fn opencode_wrapper_invokes_fake_opencode_binary_and_records_success() {
-    let tmp = tempdir().expect("tempdir");
-    let bin_dir = tmp.path().join("bin");
-    fs::create_dir_all(&bin_dir).expect("mkdir bin");
-    write_shell_script(&bin_dir.join("opencode"), "#!/bin/sh\nexit 0\n");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .arg("init")
-        .current_dir(tmp.path())
-        .assert()
-        .success();
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["opencode", "run", "explain diff"])
-        .current_dir(tmp.path())
-        .env("PATH", path_with_bin(&bin_dir))
-        .assert()
-        .success();
-
-    let stats = fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
-    assert!(stats.contains("opencode"));
-    assert!(stats.contains("succeeded"));
-}
-
-#[test]
 fn mcp_serve_once_handles_rpc_tools_list() {
     let tmp = tempdir().expect("tempdir");
 
@@ -483,22 +283,6 @@ fn hook_command_outputs_pre_prompt_payload_for_agent_hooks() {
 }
 
 #[test]
-fn wrap_command_routes_to_selected_adapter_with_fallback() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["wrap", "claude", "--prompt", "explain auth failure"])
-        .current_dir(tmp.path())
-        .env("PATH", "")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("adapter=claude"))
-        .stdout(predicate::str::contains("command=claude -p"))
-        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
-}
-
-#[test]
 fn mcp_config_claude_outputs_stdio_configuration() {
     let tmp = tempdir().expect("tempdir");
 
@@ -515,6 +299,254 @@ fn mcp_config_claude_outputs_stdio_configuration() {
         .stdout(predicate::str::contains(
             tmp.path().to_string_lossy().as_ref(),
         ));
+}
+
+#[test]
+fn mcp_config_opencode_outputs_local_mcp_configuration() {
+    let tmp = tempdir().expect("tempdir");
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["mcp", "config", "opencode"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(
+        value["$schema"],
+        serde_json::Value::String("https://opencode.ai/config.json".to_string())
+    );
+    assert_eq!(value["mcp"]["ctx"]["type"], "local");
+    assert_eq!(value["mcp"]["ctx"]["enabled"], true);
+    let command = value["mcp"]["ctx"]["command"]
+        .as_array()
+        .expect("command array");
+    assert_eq!(command.first().and_then(|item| item.as_str()), Some("ctx"));
+    let repo_root_index = command
+        .iter()
+        .position(|item| item == "--repo-root")
+        .expect("repo-root flag");
+    assert!(command.iter().any(|item| item == "mcp"));
+    assert!(command.iter().any(|item| item == "stdio"));
+    let rendered_repo_root = command
+        .get(repo_root_index + 1)
+        .and_then(|item| item.as_str())
+        .expect("repo-root value");
+    let rendered_repo_root = std::path::PathBuf::from(rendered_repo_root);
+    assert!(rendered_repo_root.is_absolute());
+    assert_eq!(
+        std::fs::canonicalize(rendered_repo_root).expect("canonical rendered repo root"),
+        std::fs::canonicalize(tmp.path()).expect("canonical temp repo root")
+    );
+}
+
+#[test]
+fn mcp_config_codex_outputs_toml_configuration() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["mcp", "config", "codex"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[mcp_servers.ctx]"))
+        .stdout(predicate::str::contains("command = \"ctx\""))
+        .stdout(predicate::str::contains("args = ["))
+        .stdout(predicate::str::contains("mcp"))
+        .stdout(predicate::str::contains("stdio"))
+        .stdout(predicate::str::contains(
+            tmp.path().to_string_lossy().as_ref(),
+        ));
+}
+
+#[test]
+fn opencode_install_creates_project_config_and_command_files() {
+    let tmp = tempdir().expect("tempdir");
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "opencode", "install"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(report["commands_written"], 31);
+    assert_eq!(
+        report["instruction_files"]
+            .as_array()
+            .map(|items| items.len()),
+        Some(1)
+    );
+
+    let config =
+        std::fs::read_to_string(tmp.path().join("opencode.json")).expect("opencode config");
+    let value: serde_json::Value = serde_json::from_str(&config).expect("config json");
+    assert_eq!(value["mcp"]["ctx"]["type"], "local");
+    assert_eq!(value["mcp"]["ctx"]["enabled"], true);
+    let instructions = value["instructions"]
+        .as_array()
+        .expect("instructions array");
+    assert!(instructions.iter().any(|item| item == "docs/guidelines.md"));
+    assert!(instructions.iter().any(|item| item == "docs/security.md"));
+    assert!(
+        instructions
+            .iter()
+            .any(|item| item == ".opencode/instructions/ctx-host-first.md")
+    );
+
+    for command in [
+        "ctx-help.md",
+        "ctx-init.md",
+        "ctx-index.md",
+        "ctx-reindex.md",
+        "ctx-graph-build.md",
+        "ctx-graph-rebuild.md",
+        "ctx-doctor.md",
+        "ctx-pack.md",
+        "ctx-ask.md",
+        "ctx-hook.md",
+        "ctx-explain.md",
+        "ctx-retrieve.md",
+        "ctx-graph-query.md",
+        "ctx-prune-logs.md",
+        "ctx-prune-diff.md",
+        "ctx-opencode-install.md",
+        "ctx-mcp-serve.md",
+        "ctx-mcp-stdio.md",
+        "ctx-mcp-config-claude.md",
+        "ctx-mcp-config-opencode.md",
+        "ctx-memory-set.md",
+        "ctx-memory-get.md",
+        "ctx-memory-list.md",
+        "ctx-memory-search.md",
+        "ctx-memory-delete.md",
+        "ctx-memory-import.md",
+        "ctx-memory-bootstrap.md",
+        "ctx-memory-export.md",
+        "ctx-benchmark-memory-ab.md",
+        "ctx-benchmark-memory-suite.md",
+        "ctx-stats.md",
+    ] {
+        assert!(
+            tmp.path().join(".opencode/commands").join(command).exists(),
+            "missing {command}"
+        );
+    }
+
+    let host_first = tmp.path().join(".opencode/instructions/ctx-host-first.md");
+    assert!(host_first.exists(), "missing ctx-host-first.md");
+    let host_first_text =
+        std::fs::read_to_string(host_first).expect("read host-first instructions");
+    assert!(host_first_text.contains("Prefer CTX slash commands and CTX MCP tools"));
+    assert!(host_first_text.contains("Do not revive wrapper-style workflows"));
+}
+
+#[test]
+fn codex_install_creates_project_config_and_skill_assets() {
+    let tmp = tempdir().expect("tempdir");
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "codex", "install"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(report["skills_written"], 31);
+
+    let config =
+        std::fs::read_to_string(tmp.path().join(".codex/config.toml")).expect("codex config");
+    assert!(config.contains("[mcp_servers.ctx]"));
+    assert!(config.contains("command = \"ctx\""));
+    assert!(config.contains("mcp"));
+    assert!(config.contains("stdio"));
+
+    let skill_path = tmp.path().join(".agents/skills/ctx-pack/SKILL.md");
+    assert!(skill_path.exists(), "missing ctx-pack Codex skill");
+    let skill = std::fs::read_to_string(skill_path).expect("read codex skill");
+    assert!(skill.contains("name: ctx-pack"));
+    assert!(skill.contains("Run `ctx pack"));
+}
+
+#[test]
+fn claude_install_creates_project_mcp_and_skill_assets() {
+    let tmp = tempdir().expect("tempdir");
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "claude", "install"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(report["skills_written"], 31);
+
+    let config = std::fs::read_to_string(tmp.path().join(".mcp.json")).expect("claude mcp config");
+    let value: serde_json::Value = serde_json::from_str(&config).expect("claude mcp json");
+    assert!(value["mcpServers"]["ctx"].is_object());
+    assert_eq!(value["mcpServers"]["ctx"]["command"], "ctx");
+    assert!(
+        value["mcpServers"]["ctx"]["args"]
+            .as_array()
+            .expect("claude args")
+            .iter()
+            .any(|item| item == "stdio")
+    );
+
+    let skill_path = tmp.path().join(".claude/skills/ctx-pack/SKILL.md");
+    assert!(skill_path.exists(), "missing ctx-pack Claude skill");
+    let skill = std::fs::read_to_string(skill_path).expect("read claude skill");
+    assert!(skill.contains("name: ctx-pack"));
+    assert!(skill.contains("/ctx-pack"));
+}
+
+#[test]
+fn opencode_install_merges_existing_mcp_config() {
+    let tmp = tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join("opencode.json"),
+        r#"{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "other": {
+      "type": "local",
+      "enabled": true,
+      "command": ["echo", "hi"]
+    }
+  }
+}"#,
+    )
+    .expect("write existing config");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["opencode", "install"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let config = std::fs::read_to_string(tmp.path().join("opencode.json")).expect("config");
+    let value: serde_json::Value = serde_json::from_str(&config).expect("json");
+    assert!(value["mcp"]["other"].is_object());
+    assert!(value["mcp"]["ctx"].is_object());
+    assert_eq!(value["mcp"]["ctx"]["type"], "local");
+    assert!(value["instructions"].is_array());
+    assert!(
+        value["instructions"]
+            .as_array()
+            .expect("instructions")
+            .iter()
+            .any(|item| item == ".opencode/instructions/ctx-host-first.md")
+    );
 }
 
 #[test]
@@ -546,18 +578,49 @@ fn help_command_prints_command_guide_with_examples() {
         .assert()
         .success()
         .stdout(predicate::str::contains("CTX Command Guide"))
+        .stdout(predicate::str::contains("Primary OpenCode path:"))
+        .stdout(predicate::str::contains(
+            "legacy wrapper commands have been removed",
+        ))
         .stdout(predicate::str::contains("ctx init"))
         .stdout(predicate::str::contains(
             "Example: ctx pack \"fix failing pytest in auth\" --json --attach /tmp/fail.txt",
         ))
         .stdout(predicate::str::contains("ctx mcp serve --port 8765"))
         .stdout(predicate::str::contains("ctx ask"))
-        .stdout(predicate::str::contains("ctx wrap"))
+        .stdout(predicate::str::contains("ctx wrap").not())
         .stdout(predicate::str::contains("ctx hook"))
         .stdout(predicate::str::contains("ctx mcp stdio"))
+        .stdout(predicate::str::contains("ctx opencode install"))
+        .stdout(predicate::str::contains("ctx codex install"))
+        .stdout(predicate::str::contains("ctx claude install"))
+        .stdout(predicate::str::contains("ctx mcp config codex"))
+        .stdout(predicate::str::contains("ctx codex \"").not())
+        .stdout(predicate::str::contains("ctx claude \"").not())
+        .stdout(predicate::str::contains("ctx opencode run").not())
         .stdout(predicate::str::contains("ctx memory set"))
         .stdout(predicate::str::contains("ctx benchmark memory-ab"))
         .stdout(predicate::str::contains("ctx doctor"));
+}
+
+#[test]
+fn legacy_wrapper_commands_are_removed_from_public_cli() {
+    let tmp = tempdir().expect("tempdir");
+
+    for args in [
+        vec!["wrap", "claude", "--prompt", "explain auth failure"],
+        vec!["codex", "review risky diff"],
+        vec!["claude", "explain flaky test"],
+        vec!["opencode", "run", "explain diff"],
+    ] {
+        Command::cargo_bin("ctx")
+            .expect("bin")
+            .args(&args)
+            .current_dir(tmp.path())
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("unrecognized"));
+    }
 }
 
 #[test]
@@ -568,16 +631,27 @@ fn release_assets_are_present_and_document_install_paths() {
         .expect("release build script should exist");
     let smoke_script = fs::read_to_string(root.join("scripts/release/install-smoke.sh"))
         .expect("install smoke script should exist");
+    let opencode_smoke = fs::read_to_string(root.join("scripts/release/opencode-smoke.sh"))
+        .expect("opencode smoke script should exist");
     let formula =
         fs::read_to_string(root.join("Formula/ctx.rb")).expect("homebrew formula should exist");
     let install_docs =
         fs::read_to_string(root.join("docs/install.md")).expect("install docs should exist");
+    let readme = fs::read_to_string(root.join("README.md")).expect("readme should exist");
+    let guide = fs::read_to_string(root.join("guide.md")).expect("guide should exist");
 
     assert!(build_script.contains("build --release"));
     assert!(build_script.contains("SHA256SUMS"));
     assert!(build_script.contains("tar"));
+    assert!(build_script.contains("opencode-smoke.sh"));
     assert!(smoke_script.contains("doctor"));
     assert!(smoke_script.contains("mcp stdio"));
+    assert!(opencode_smoke.contains("opencode install"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-pack.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-bootstrap.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-search.md"));
+    assert!(opencode_smoke.contains(".opencode/instructions/ctx-host-first.md"));
+    assert!(opencode_smoke.contains("opencode.json"));
     assert!(formula.contains("class Ctx < Formula"));
     assert!(formula.contains("\"cargo\", \"install\""));
     assert!(formula.contains("\"doctor\""));
@@ -585,75 +659,50 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("GitHub Releases"));
     assert!(install_docs.contains("cargo install"));
     assert!(install_docs.contains("ctx doctor"));
+    assert!(install_docs.contains("ctx codex install"));
+    assert!(install_docs.contains("ctx claude install"));
+    assert!(install_docs.contains("scripts/release/opencode-smoke.sh"));
+    assert!(readme.contains("docs/codex-integration.md"));
+    assert!(readme.contains("docs/claude-integration.md"));
+    assert!(readme.contains("guide.md"));
+    assert!(guide.contains("OpenCode-First Workflow"));
+    assert!(guide.contains("Command Reference"));
 }
 
 #[test]
-#[cfg(unix)]
-fn codex_wrapper_invokes_real_codex_binary_when_available() {
-    let tmp = tempdir().expect("tempdir");
-    let bin_dir = tmp.path().join("bin");
-    fs::create_dir_all(&bin_dir).expect("mkdir");
-    write_shell_script(
-        &bin_dir.join("codex"),
-        "#!/bin/sh\nprintf 'FAKE-CODEX\\n'\nprintf 'subcommand:%s\\n' \"$1\"\nprintf '%s\\n' \"$2\"\n",
-    );
+fn readme_is_product_focused_and_guide_holds_operational_details() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = fs::read_to_string(root.join("README.md")).expect("readme should exist");
+    let guide = fs::read_to_string(root.join("guide.md")).expect("guide should exist");
 
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["codex", "review risky diff"])
-        .current_dir(tmp.path())
-        .env("PATH", path_with_bin(&bin_dir))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("FAKE-CODEX"))
-        .stdout(predicate::str::contains("subcommand:exec"))
-        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
+    assert!(readme.contains("What CTX Is"));
+    assert!(readme.contains("OpenCode-First Usage"));
+    assert!(!readme.contains("OpenCode Commands And Integration Tests"));
+    assert!(!readme.contains("CLI Commands And Functional Tests"));
+    assert!(guide.contains("OpenCode-First Workflow"));
+    assert!(guide.contains("Command Reference"));
 }
 
 #[test]
-#[cfg(unix)]
-fn opencode_wrapper_invokes_real_opencode_binary_when_available() {
-    let tmp = tempdir().expect("tempdir");
-    let bin_dir = tmp.path().join("bin");
-    fs::create_dir_all(&bin_dir).expect("mkdir");
-    write_shell_script(
-        &bin_dir.join("opencode"),
-        "#!/bin/sh\nprintf 'FAKE-OPENCODE\\n'\nprintf 'subcommand:%s\\n' \"$1\"\nprintf '%s\\n' \"$2\"\n",
-    );
+fn opencode_release_smoke_script_bootstraps_host_first_assets() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("scripts/release/opencode-smoke.sh");
+    let ctx_bin = assert_cmd::cargo::cargo_bin("ctx");
 
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["opencode", "run", "explain this diff"])
-        .current_dir(tmp.path())
-        .env("PATH", path_with_bin(&bin_dir))
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("FAKE-OPENCODE"))
-        .stdout(predicate::str::contains("subcommand:run"))
-        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"));
-}
-
-#[test]
-#[cfg(unix)]
-fn codex_wrapper_falls_back_to_printed_context_if_binary_missing() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["codex", "review risky diff"])
-        .current_dir(tmp.path())
-        .env(
-            "PATH",
-            tmp.path().join("missing-bin").to_string_lossy().to_string(),
-        )
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("adapter=codex"))
-        .stdout(predicate::str::contains("command=codex"))
-        .stdout(predicate::str::contains("[CTX COMPACT CONTEXT]"))
-        .stderr(predicate::str::contains(
-            "ctx warning: 'codex' not found in PATH",
-        ));
+    std::process::Command::new(script)
+        .arg(ctx_bin)
+        .current_dir(&root)
+        .output()
+        .map(|output| {
+            assert!(
+                output.status.success(),
+                "opencode smoke failed:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("CTX OpenCode smoke passed:"));
+        })
+        .expect("run opencode smoke script");
 }
 
 #[test]
@@ -790,6 +839,113 @@ fn benchmark_memory_ab_outputs_comparison_metrics() {
 }
 
 #[test]
+fn benchmark_memory_suite_writes_markdown_and_json_reports() {
+    let tmp = tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run tests before merge.\n- Fix root cause, never bypass failures.\n",
+    )
+    .expect("write markdown");
+    fs::write(
+        tmp.path().join("checklist.md"),
+        "- Run tests before merge.\n- Fix root cause, never bypass failures.\n",
+    )
+    .expect("write checklist");
+    fs::write(
+        tmp.path().join("markdown_answer.txt"),
+        "I will run tests before merge.",
+    )
+    .expect("write markdown answer");
+    fs::write(
+        tmp.path().join("graph_answer.txt"),
+        "I will run tests before merge and fix root cause, never bypass failures.",
+    )
+    .expect("write graph answer");
+    fs::write(
+        tmp.path().join("memory-suite.toml"),
+        r#"
+title = "CTX Memory Benchmark"
+
+[[cases]]
+name = "auth_rules"
+query = "run tests and fix root cause"
+markdown = "AGENTS.md"
+limit = 20
+checklist = "checklist.md"
+markdown_answer = "markdown_answer.txt"
+graph_answer = "graph_answer.txt"
+"#,
+    )
+    .expect("write spec");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "set",
+            "tests.required",
+            "Run tests before merge.",
+            "--scope",
+            "project",
+            "--source",
+            "manual",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "set",
+            "quality.root_cause",
+            "Fix root cause, never bypass failures.",
+            "--scope",
+            "project",
+            "--source",
+            "manual",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "--json",
+            "benchmark",
+            "memory-suite",
+            "--spec",
+            "memory-suite.toml",
+            "--report-out",
+            "benchmark-report.md",
+            "--json-out",
+            "benchmark-report.json",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"case_count\": 1"))
+        .stdout(predicate::str::contains("\"report_markdown_path\":"));
+
+    let report_md = fs::read_to_string(tmp.path().join("benchmark-report.md")).expect("report md");
+    assert!(report_md.contains("# CTX Memory Benchmark"));
+    assert!(report_md.contains("auth_rules"));
+
+    let report_json =
+        fs::read_to_string(tmp.path().join("benchmark-report.json")).expect("report json");
+    assert!(report_json.contains("\"graph_quality_wins\":"));
+}
+
+#[test]
 fn memory_import_and_export_commands_work_with_markdown_files() {
     let tmp = tempdir().expect("tempdir");
     fs::write(
@@ -845,32 +1001,62 @@ fn memory_import_and_export_commands_work_with_markdown_files() {
     assert!(exported.contains("Graph Memory Directives"));
 }
 
+#[test]
+fn memory_bootstrap_and_search_commands_cover_agents_to_graph_flow() {
+    let tmp = tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run targeted tests before completion.\n- Fix auth root cause before merge.\n",
+    )
+    .expect("write agents");
+    fs::create_dir_all(tmp.path().join(".github")).expect("create .github");
+    fs::write(
+        tmp.path().join(".github/copilot-instructions.md"),
+        "# Copilot\n- Prefer auth fixtures when debugging refresh token failures.\n",
+    )
+    .expect("write copilot instructions");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["memory", "bootstrap"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("imported_files=2"))
+        .stdout(predicate::str::contains("imported_directives="));
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args([
+            "memory",
+            "search",
+            "auth root cause",
+            "--scope",
+            "project",
+            "--limit",
+            "10",
+        ])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Fix auth root cause before merge.",
+        ))
+        .stdout(predicate::str::contains("[project:markdown]"));
+}
+
 fn free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().expect("addr").port();
     drop(listener);
     port
-}
-
-fn write_shell_script(path: &std::path::Path, content: &str) {
-    fs::write(path, content).expect("write script");
-    #[cfg(unix)]
-    {
-        let mut perms = fs::metadata(path).expect("metadata").permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(path, perms).expect("chmod");
-    }
-}
-
-fn path_with_bin(bin_dir: &std::path::Path) -> String {
-    let mut parts = vec![bin_dir.to_path_buf()];
-    if let Some(existing) = std::env::var_os("PATH") {
-        parts.extend(std::env::split_paths(&existing));
-    }
-    std::env::join_paths(parts)
-        .expect("join paths")
-        .to_string_lossy()
-        .to_string()
 }
 
 fn rpc_tools_list(port: u16) -> String {

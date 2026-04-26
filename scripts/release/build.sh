@@ -36,6 +36,7 @@ cp README.md LICENSE "$PACKAGE_DIR/" 2>/dev/null || true
 cp docs/install.md "$PACKAGE_DIR/INSTALL.md"
 
 "$ROOT_DIR/scripts/release/install-smoke.sh" "$PACKAGE_DIR/ctx"
+"$ROOT_DIR/scripts/release/opencode-smoke.sh" "$PACKAGE_DIR/ctx"
 
 mkdir -p "$DIST_DIR"
 (

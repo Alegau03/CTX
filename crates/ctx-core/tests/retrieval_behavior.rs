@@ -36,6 +36,34 @@ fn decode_token(token: &str) -> bool {
 }
 
 #[test]
+fn retrieval_returns_relevant_typescript_context() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.ts"),
+        r#"
+import { decodeToken } from "./tokens";
+
+export const validateRefreshToken = (token: string): boolean => {
+    return decodeToken(token);
+};
+"#,
+    )
+    .expect("write");
+
+    run_index(tmp.path(), &[]).expect("index");
+
+    let hits = run_retrieve(tmp.path(), "refresh token decode failure", 5).expect("retrieve");
+    assert!(!hits.is_empty());
+    assert!(
+        hits.iter()
+            .any(|h| h.content.contains("validateRefreshToken"))
+    );
+}
+
+#[test]
 fn retrieval_respects_limit() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");

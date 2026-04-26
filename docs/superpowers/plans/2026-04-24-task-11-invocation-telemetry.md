@@ -1,5 +1,7 @@
 # Task 11 Invocation + Telemetry Implementation Plan
 
+> Historical note: this document records the wrapper-era implementation plan for Task 11. The public wrapper-style CLI surface described here has since been removed. Keep this file only as implementation history for the internal adapter backend and telemetry work, not as current product documentation.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Complete Task 11 by making CTX wrappers production-ready for Codex, Claude Code, OpenCode, and generic CLI adapters while recording fully local invocation metrics, stats, and audit evidence.

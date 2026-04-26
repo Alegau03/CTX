@@ -20,7 +20,9 @@ ctx-telemetry = { path = "../ctx-telemetry" }
 ctx-token = { path = "../ctx-token" }
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 walkdir.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -229,3 +229,35 @@ fn memory_directives_support_crud_and_search() {
             .is_none()
     );
 }
+
+#[test]
+fn exact_symbol_lookup_returns_only_exact_matches() {
+    let dir = tempdir().expect("tempdir");
+    let db = dir.path().join("graph.db");
+    let store = GraphStore::open(&db).expect("open");
+    store.init_schema().expect("schema");
+
+    store
+        .upsert_symbol(
+            "src/auth.rs",
+            "decode_token",
+            "function",
+            "fn decode_token()",
+        )
+        .expect("decode");
+    store
+        .upsert_symbol(
+            "src/auth.rs",
+            "decode_token_strict",
+            "function",
+            "fn decode_token_strict()",
+        )
+        .expect("decode strict");
+
+    let hits = store
+        .find_symbols_by_exact_name("decode_token", 10)
+        .expect("exact lookup");
+
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "decode_token");
+}

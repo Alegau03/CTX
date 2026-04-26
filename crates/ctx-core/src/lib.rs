@@ -18,7 +18,8 @@ use ctx_telemetry::{
     append_privacy_audit_event, write_latest_stats,
 };
 use ctx_token::estimate_tokens;
-use serde::Serialize;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +66,59 @@ pub struct MemoryAbBenchmarkResult {
     pub quality_delta_pct: Option<f64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryBenchmarkSuiteSpec {
+    #[serde(default)]
+    pub title: Option<String>,
+    pub cases: Vec<MemoryBenchmarkCaseSpec>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryBenchmarkCaseSpec {
+    pub name: String,
+    pub query: String,
+    pub markdown: PathBuf,
+    #[serde(default = "default_memory_benchmark_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub checklist: Option<PathBuf>,
+    #[serde(default)]
+    pub markdown_answer: Option<PathBuf>,
+    #[serde(default)]
+    pub graph_answer: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryBenchmarkSuiteCaseReport {
+    pub case_name: String,
+    pub latency_ms: u64,
+    pub result: MemoryAbBenchmarkResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryBenchmarkSuiteSummary {
+    pub case_count: usize,
+    pub avg_token_reduction_pct: f64,
+    pub avg_markdown_query_term_coverage: f64,
+    pub avg_graph_query_term_coverage: f64,
+    pub avg_latency_ms: f64,
+    pub avg_markdown_success_rate: Option<f64>,
+    pub avg_graph_success_rate: Option<f64>,
+    pub markdown_quality_wins: usize,
+    pub graph_quality_wins: usize,
+    pub ties: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryBenchmarkSuiteReport {
+    pub title: String,
+    pub spec_path: String,
+    pub report_markdown_path: String,
+    pub json_output_path: Option<String>,
+    pub summary: MemoryBenchmarkSuiteSummary,
+    pub cases: Vec<MemoryBenchmarkSuiteCaseReport>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MemoryImportReport {
     pub markdown_path: String,
@@ -72,6 +126,16 @@ pub struct MemoryImportReport {
     pub source: String,
     pub imported: usize,
     pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryBootstrapReport {
+    pub scope: String,
+    pub source: String,
+    pub scanned_paths: Vec<String>,
+    pub imported_files: usize,
+    pub imported_directives: usize,
+    pub reports: Vec<MemoryImportReport>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -359,6 +423,7 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     };
 
     let mut indexed = 0usize;
+    let mut indexed_files = Vec::new();
     for root in roots {
         for entry in WalkDir::new(root)
             .into_iter()
@@ -392,10 +457,15 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
             store.index_file(&rel)?;
 
             if let Ok(content) = fs::read_to_string(path) {
-                index_symbols_and_edges(&store, &rel, &content)?;
+                upsert_symbols_and_snippets(&store, &rel, &content)?;
+                indexed_files.push((rel.clone(), content));
             }
             indexed += 1;
         }
+    }
+
+    for (file_path, content) in &indexed_files {
+        index_symbol_edges(&store, file_path, content)?;
     }
 
     Ok(indexed)
@@ -556,6 +626,28 @@ pub fn run_memory_list(
         .collect())
 }
 
+pub fn run_memory_search(
+    repo_root: &Path,
+    query: &str,
+    scope: Option<&str>,
+    limit: usize,
+) -> Result<Vec<MemoryDirectiveResult>> {
+    let cfg = load_or_default_config(repo_root)?;
+    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    store.init_schema()?;
+
+    let mut directives = store.search_memory_directives(query, 500)?;
+    if let Some(scope_filter) = scope {
+        directives.retain(|directive| directive.scope == scope_filter);
+    }
+
+    Ok(directives
+        .into_iter()
+        .take(limit.max(1))
+        .map(map_memory_directive)
+        .collect())
+}
+
 pub fn run_memory_delete(repo_root: &Path, key: &str) -> Result<bool> {
     let cfg = load_or_default_config(repo_root)?;
     let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
@@ -649,6 +741,145 @@ pub fn run_memory_ab_benchmark(
     })
 }
 
+pub fn run_memory_ab_benchmark_suite(
+    repo_root: &Path,
+    spec_path: &Path,
+    report_markdown_path: &Path,
+    json_output_path: Option<&Path>,
+) -> Result<MemoryBenchmarkSuiteReport> {
+    let raw = fs::read_to_string(spec_path)
+        .with_context(|| format!("failed to read benchmark spec {}", spec_path.display()))?;
+    let spec: MemoryBenchmarkSuiteSpec = toml::from_str(&raw)
+        .with_context(|| format!("failed to parse benchmark spec {}", spec_path.display()))?;
+
+    if spec.cases.is_empty() {
+        bail!(
+            "benchmark spec {} does not contain any cases",
+            spec_path.display()
+        );
+    }
+
+    let spec_dir = spec_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| repo_root.to_path_buf());
+    let mut case_reports = Vec::new();
+    let mut markdown_success_values = Vec::new();
+    let mut graph_success_values = Vec::new();
+    let mut markdown_quality_wins = 0usize;
+    let mut graph_quality_wins = 0usize;
+    let mut ties = 0usize;
+
+    for case in spec.cases {
+        let markdown = resolve_spec_path(&spec_dir, &case.markdown);
+        let checklist = case
+            .checklist
+            .as_ref()
+            .map(|path| resolve_spec_path(&spec_dir, path));
+        let markdown_answer = case
+            .markdown_answer
+            .as_ref()
+            .map(|path| resolve_spec_path(&spec_dir, path));
+        let graph_answer = case
+            .graph_answer
+            .as_ref()
+            .map(|path| resolve_spec_path(&spec_dir, path));
+
+        let started = Instant::now();
+        let result = run_memory_ab_benchmark(
+            repo_root,
+            &case.query,
+            &markdown,
+            case.limit,
+            checklist.as_deref(),
+            markdown_answer.as_deref(),
+            graph_answer.as_deref(),
+        )?;
+        let latency_ms = started.elapsed().as_millis() as u64;
+
+        if let Some(rate) = result.markdown_success_rate {
+            markdown_success_values.push(rate);
+        }
+        if let Some(rate) = result.graph_success_rate {
+            graph_success_values.push(rate);
+        }
+
+        match result.quality_winner.as_deref() {
+            Some("markdown") => markdown_quality_wins += 1,
+            Some("graph") => graph_quality_wins += 1,
+            Some("tie") => ties += 1,
+            _ => {}
+        }
+
+        case_reports.push(MemoryBenchmarkSuiteCaseReport {
+            case_name: case.name,
+            latency_ms,
+            result,
+        });
+    }
+
+    let case_count = case_reports.len();
+    let case_count_f64 = case_count as f64;
+    let avg_token_reduction_pct = case_reports
+        .iter()
+        .map(|case| case.result.token_reduction_pct)
+        .sum::<f64>()
+        / case_count_f64;
+    let avg_markdown_query_term_coverage = case_reports
+        .iter()
+        .map(|case| case.result.markdown_query_term_coverage)
+        .sum::<f64>()
+        / case_count_f64;
+    let avg_graph_query_term_coverage = case_reports
+        .iter()
+        .map(|case| case.result.graph_query_term_coverage)
+        .sum::<f64>()
+        / case_count_f64;
+    let avg_latency_ms = case_reports
+        .iter()
+        .map(|case| case.latency_ms as f64)
+        .sum::<f64>()
+        / case_count_f64;
+
+    let summary = MemoryBenchmarkSuiteSummary {
+        case_count,
+        avg_token_reduction_pct,
+        avg_markdown_query_term_coverage,
+        avg_graph_query_term_coverage,
+        avg_latency_ms,
+        avg_markdown_success_rate: average_optional(&markdown_success_values),
+        avg_graph_success_rate: average_optional(&graph_success_values),
+        markdown_quality_wins,
+        graph_quality_wins,
+        ties,
+    };
+
+    let report = MemoryBenchmarkSuiteReport {
+        title: spec
+            .title
+            .unwrap_or_else(|| "CTX Memory Benchmark".to_string()),
+        spec_path: spec_path.display().to_string(),
+        report_markdown_path: report_markdown_path.display().to_string(),
+        json_output_path: json_output_path.map(|path| path.display().to_string()),
+        summary,
+        cases: case_reports,
+    };
+
+    write_text_file(
+        report_markdown_path,
+        &render_memory_benchmark_suite_markdown(&report),
+    )?;
+
+    if let Some(path) = json_output_path {
+        write_text_file(
+            path,
+            &format!("{}\n", serde_json::to_string_pretty(&report)?),
+        )?;
+    }
+
+    Ok(report)
+}
+
 pub fn run_memory_import_markdown(
     repo_root: &Path,
     markdown_path: &Path,
@@ -675,9 +906,12 @@ pub fn run_memory_import_markdown(
                 .to_lowercase()
         });
 
+    let prefix = slugify(&prefix);
+    store.delete_memory_directives_by_prefix(&prefix)?;
+
     let mut keys = Vec::new();
     for (idx, body) in directives.iter().enumerate() {
-        let key = format!("{}.{}", slugify(&prefix), idx + 1);
+        let key = format!("{}.{}", prefix, idx + 1);
         store.upsert_memory_directive(&key, body, scope, source)?;
         keys.push(key);
     }
@@ -688,6 +922,55 @@ pub fn run_memory_import_markdown(
         source: source.to_string(),
         imported: keys.len(),
         keys,
+    })
+}
+
+pub fn run_memory_bootstrap_markdown(
+    repo_root: &Path,
+    markdown_paths: &[PathBuf],
+    scope: &str,
+    source: &str,
+) -> Result<MemoryBootstrapReport> {
+    let candidate_paths = if markdown_paths.is_empty() {
+        default_memory_markdown_paths(repo_root)
+    } else {
+        markdown_paths
+            .iter()
+            .map(|path| {
+                if path.is_absolute() {
+                    path.clone()
+                } else {
+                    repo_root.join(path)
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let scanned_paths = candidate_paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+
+    let existing_paths = candidate_paths
+        .into_iter()
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+
+    let mut reports = Vec::new();
+    let mut imported_directives = 0usize;
+    for path in existing_paths {
+        let report = run_memory_import_markdown(repo_root, &path, scope, source, None)?;
+        imported_directives += report.imported;
+        reports.push(report);
+    }
+
+    Ok(MemoryBootstrapReport {
+        scope: scope.to_string(),
+        source: source.to_string(),
+        scanned_paths,
+        imported_files: reports.len(),
+        imported_directives,
+        reports,
     })
 }
 
@@ -723,17 +1006,15 @@ pub fn run_memory_export_markdown(
     })
 }
 
-fn index_symbols_and_edges(store: &GraphStore, file_path: &str, content: &str) -> Result<()> {
+fn upsert_symbols_and_snippets(store: &GraphStore, file_path: &str, content: &str) -> Result<()> {
     let symbols = extract_symbols(content, file_path);
     if symbols.is_empty() {
         return Ok(());
     }
 
-    let mut ids_by_name = HashMap::new();
     for symbol in &symbols {
         let kind = kind_to_str(&symbol.kind);
-        let id = store.upsert_symbol(file_path, &symbol.name, kind, &symbol.signature)?;
-        ids_by_name.insert(symbol.name.clone(), id);
+        let _ = store.upsert_symbol(file_path, &symbol.name, kind, &symbol.signature)?;
 
         let slices = slice_symbols(content, file_path, &[symbol.name.as_str()]);
         if let Some(slice) = slices.first() {
@@ -744,13 +1025,35 @@ fn index_symbols_and_edges(store: &GraphStore, file_path: &str, content: &str) -
         }
     }
 
-    // Naive call/test edges from sliced function/test content.
+    Ok(())
+}
+
+fn index_symbol_edges(store: &GraphStore, file_path: &str, content: &str) -> Result<()> {
+    let symbols = extract_symbols(content, file_path);
+    if symbols.is_empty() {
+        return Ok(());
+    }
+
+    let local_ids = symbols
+        .iter()
+        .map(|symbol| {
+            Ok((
+                symbol.name.clone(),
+                store
+                    .find_symbols_by_exact_name(&symbol.name, 20)?
+                    .into_iter()
+                    .find(|hit| hit.file_path == file_path && hit.kind == kind_to_str(&symbol.kind))
+                    .map(|hit| hit.id),
+            ))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+
     for symbol in &symbols {
         if !matches!(symbol.kind, SymbolKind::Function | SymbolKind::Test) {
             continue;
         }
 
-        let caller_id = if let Some(id) = ids_by_name.get(&symbol.name) {
+        let caller_id = if let Some(Some(id)) = local_ids.get(&symbol.name) {
             *id
         } else {
             continue;
@@ -762,24 +1065,69 @@ fn index_symbols_and_edges(store: &GraphStore, file_path: &str, content: &str) -
             .map(|s| s.content.as_str())
             .unwrap_or_default();
 
-        for (candidate_name, candidate_id) in &ids_by_name {
-            if candidate_name == &symbol.name {
+        for candidate_name in referenced_symbol_names(body) {
+            if candidate_name == symbol.name {
                 continue;
             }
 
-            let token = format!("{}(", candidate_name);
-            if body.contains(&token) {
+            for candidate in store.find_symbols_by_exact_name(&candidate_name, 20)? {
+                if candidate.id == caller_id || candidate.kind == "import" {
+                    continue;
+                }
                 let edge_type = if matches!(symbol.kind, SymbolKind::Test) {
                     "tests"
                 } else {
                     "calls"
                 };
-                let _ = store.link_symbols(caller_id, *candidate_id, edge_type, None);
+                let metadata = if candidate.file_path != file_path {
+                    Some(r#"{"scope":"cross_file"}"#)
+                } else {
+                    None
+                };
+                let _ = store.link_symbols(caller_id, candidate.id, edge_type, metadata);
             }
         }
     }
 
     Ok(())
+}
+
+fn referenced_symbol_names(body: &str) -> Vec<String> {
+    let call_regex = Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(").expect("valid call regex");
+    let mut seen = HashSet::new();
+    let mut names = Vec::new();
+    for capture in call_regex.captures_iter(body) {
+        let Some(name) = capture.get(1).map(|m| m.as_str()) else {
+            continue;
+        };
+        if is_language_keyword(name) {
+            continue;
+        }
+        if seen.insert(name.to_string()) {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+fn is_language_keyword(name: &str) -> bool {
+    matches!(
+        name,
+        "if" | "for"
+            | "while"
+            | "loop"
+            | "match"
+            | "return"
+            | "assert"
+            | "expect"
+            | "panic"
+            | "Some"
+            | "None"
+            | "Ok"
+            | "Err"
+            | "true"
+            | "false"
+    )
 }
 
 fn kind_to_str(kind: &SymbolKind) -> &'static str {
@@ -978,6 +1326,86 @@ fn map_memory_directive(item: MemoryDirective) -> MemoryDirectiveResult {
     }
 }
 
+fn default_memory_benchmark_limit() -> usize {
+    20
+}
+
+fn resolve_spec_path(base_dir: &Path, candidate: &Path) -> PathBuf {
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        base_dir.join(candidate)
+    }
+}
+
+fn average_optional(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn write_text_file(path: &Path, body: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create parent directory {}", parent.display()))?;
+    }
+    fs::write(path, body).with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn render_memory_benchmark_suite_markdown(report: &MemoryBenchmarkSuiteReport) -> String {
+    let mut body = String::new();
+    body.push_str(&format!("# {}\n\n", report.title));
+    body.push_str("## Summary\n\n");
+    body.push_str(&format!("- Cases: {}\n", report.summary.case_count));
+    body.push_str(&format!(
+        "- Token reduction (avg %): {:.2}\n",
+        report.summary.avg_token_reduction_pct
+    ));
+    body.push_str(&format!(
+        "- Query coverage markdown={:.2} graph={:.2}\n",
+        report.summary.avg_markdown_query_term_coverage,
+        report.summary.avg_graph_query_term_coverage
+    ));
+    body.push_str(&format!(
+        "- Latency (avg ms): {:.2}\n",
+        report.summary.avg_latency_ms
+    ));
+    if let (Some(markdown), Some(graph)) = (
+        report.summary.avg_markdown_success_rate,
+        report.summary.avg_graph_success_rate,
+    ) {
+        body.push_str(&format!(
+            "- Success rate markdown={:.2} graph={:.2}\n",
+            markdown, graph
+        ));
+    }
+    body.push_str(&format!(
+        "- Quality wins markdown={} graph={} ties={}\n",
+        report.summary.markdown_quality_wins,
+        report.summary.graph_quality_wins,
+        report.summary.ties
+    ));
+
+    body.push_str("\n## Cases\n\n");
+    body.push_str("| Case | Token reduction % | Markdown coverage | Graph coverage | Quality winner | Latency ms |\n");
+    body.push_str("|---|---:|---:|---:|---|---:|\n");
+    for case in &report.cases {
+        body.push_str(&format!(
+            "| {} | {:.2} | {:.2} | {:.2} | {} | {} |\n",
+            case.case_name,
+            case.result.token_reduction_pct,
+            case.result.markdown_query_term_coverage,
+            case.result.graph_query_term_coverage,
+            case.result.quality_winner.as_deref().unwrap_or("n/a"),
+            case.latency_ms
+        ));
+    }
+
+    body
+}
+
 fn load_memory_context(
     repo_root: &Path,
     cfg: &CtxConfig,
@@ -996,6 +1424,15 @@ fn load_memory_context(
         .into_iter()
         .map(|m| format!("[{}:{}:{}] {}", m.scope, m.source, m.key, m.body))
         .collect())
+}
+
+fn default_memory_markdown_paths(repo_root: &Path) -> Vec<PathBuf> {
+    vec![
+        repo_root.join("AGENTS.md"),
+        repo_root.join("CLAUDE.md"),
+        repo_root.join("CODEX.md"),
+        repo_root.join(".github/copilot-instructions.md"),
+    ]
 }
 
 fn query_term_coverage(query: &str, text: &str) -> f64 {

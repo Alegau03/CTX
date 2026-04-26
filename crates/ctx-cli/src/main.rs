@@ -1,17 +1,20 @@
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
-use ctx_adapters::Agent;
 use ctx_core::{
-    init_repo, load_or_default_config, run_agent_invocation, run_explain, run_graph_query,
-    run_index, run_memory_ab_benchmark, run_memory_delete, run_memory_export_markdown,
-    run_memory_get, run_memory_import_markdown, run_memory_list, run_memory_set, run_pack,
-    run_prune_diff, run_prune_logs, run_retrieve,
+    init_repo, load_or_default_config, run_explain, run_graph_query, run_index,
+    run_memory_ab_benchmark, run_memory_ab_benchmark_suite, run_memory_bootstrap_markdown,
+    run_memory_delete, run_memory_export_markdown, run_memory_get, run_memory_import_markdown,
+    run_memory_list, run_memory_search, run_memory_set, run_pack, run_prune_diff, run_prune_logs,
+    run_retrieve,
 };
 use ctx_hooks::apply_pre_prompt_hook;
 use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
+mod host_integration;
+
+use host_integration::{HostInstallTarget, install_host_integration, render_mcp_config};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -62,7 +65,6 @@ enum Commands {
     Hook {
         query: String,
     },
-    Wrap(WrapArgs),
     Explain {
         query: String,
     },
@@ -72,14 +74,16 @@ enum Commands {
         limit: usize,
     },
     Codex {
-        query: String,
+        #[command(subcommand)]
+        command: HostInstallCommands,
     },
     Claude {
-        query: String,
+        #[command(subcommand)]
+        command: HostInstallCommands,
     },
     Opencode {
         #[command(subcommand)]
-        command: OpenCodeCommands,
+        command: HostInstallCommands,
     },
     Mcp {
         #[command(subcommand)]
@@ -112,8 +116,8 @@ enum PruneCommands {
 }
 
 #[derive(Debug, Subcommand)]
-enum OpenCodeCommands {
-    Run { query: String },
+enum HostInstallCommands {
+    Install,
 }
 
 #[derive(Debug, Subcommand)]
@@ -127,9 +131,17 @@ enum McpCommands {
 enum MemoryCommands {
     Set(MemorySetArgs),
     Import(MemoryImportArgs),
+    Bootstrap(MemoryBootstrapArgs),
     Export(MemoryExportArgs),
     Get {
         key: String,
+    },
+    Search {
+        query: String,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
     },
     List {
         #[arg(long)]
@@ -156,6 +168,14 @@ enum BenchmarkCommands {
         markdown_answer: Option<PathBuf>,
         #[arg(long)]
         graph_answer: Option<PathBuf>,
+    },
+    MemorySuite {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long = "report-out")]
+        report_out: PathBuf,
+        #[arg(long = "json-out")]
+        json_out: Option<PathBuf>,
     },
 }
 
@@ -195,14 +215,6 @@ struct McpConfigArgs {
 }
 
 #[derive(Debug, Args)]
-struct WrapArgs {
-    agent: String,
-
-    #[arg(long)]
-    prompt: String,
-}
-
-#[derive(Debug, Args)]
 struct MemorySetArgs {
     key: String,
     body: String,
@@ -222,6 +234,15 @@ struct MemoryImportArgs {
     source: String,
     #[arg(long)]
     prefix: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct MemoryBootstrapArgs {
+    paths: Vec<PathBuf>,
+    #[arg(long, default_value = "project")]
+    scope: String,
+    #[arg(long, default_value = "markdown")]
+    source: String,
 }
 
 #[derive(Debug, Args)]
@@ -331,17 +352,6 @@ fn run() -> Result<()> {
                 println!("{hook_prompt}");
             }
         }
-        Commands::Wrap(args) => {
-            let agent = parse_agent(&args.agent)?;
-            run_adapter_wrapper(
-                &repo_root,
-                agent,
-                &args.prompt,
-                cli.budget,
-                cli.attach.as_deref(),
-                cli.json,
-            )?;
-        }
         Commands::Explain { query } => {
             let explain = run_explain(&repo_root, &query)?;
             if cli.json {
@@ -372,34 +382,26 @@ fn run() -> Result<()> {
                 }
             }
         }
-        Commands::Codex { query } => {
-            run_adapter_wrapper(
-                &repo_root,
-                Agent::Codex,
-                &query,
-                cli.budget,
-                cli.attach.as_deref(),
-                cli.json,
-            )?;
-        }
-        Commands::Claude { query } => {
-            run_adapter_wrapper(
-                &repo_root,
-                Agent::Claude,
-                &query,
-                cli.budget,
-                cli.attach.as_deref(),
-                cli.json,
-            )?;
-        }
+        Commands::Codex { command } => match command {
+            HostInstallCommands::Install => {
+                print_host_install_report(
+                    install_host_integration(&repo_root, HostInstallTarget::Codex)?,
+                    cli.json,
+                )?;
+            }
+        },
+        Commands::Claude { command } => match command {
+            HostInstallCommands::Install => {
+                print_host_install_report(
+                    install_host_integration(&repo_root, HostInstallTarget::Claude)?,
+                    cli.json,
+                )?;
+            }
+        },
         Commands::Opencode { command } => match command {
-            OpenCodeCommands::Run { query } => {
-                run_adapter_wrapper(
-                    &repo_root,
-                    Agent::OpenCode,
-                    &query,
-                    cli.budget,
-                    cli.attach.as_deref(),
+            HostInstallCommands::Install => {
+                print_host_install_report(
+                    install_host_integration(&repo_root, HostInstallTarget::OpenCode)?,
                     cli.json,
                 )?;
             }
@@ -475,6 +477,25 @@ fn run() -> Result<()> {
                     );
                 }
             }
+            MemoryCommands::Bootstrap(args) => {
+                let report = run_memory_bootstrap_markdown(
+                    &repo_root,
+                    &args.paths,
+                    &args.scope,
+                    &args.source,
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!(
+                        "imported_files={} imported_directives={}",
+                        report.imported_files, report.imported_directives
+                    );
+                    for item in report.reports {
+                        println!("- {} => {} directives", item.markdown_path, item.imported);
+                    }
+                }
+            }
             MemoryCommands::Get { key } => {
                 let result = run_memory_get(&repo_root, &key)?;
                 if cli.json {
@@ -486,6 +507,25 @@ fn run() -> Result<()> {
                     );
                 } else {
                     println!("memory directive not found");
+                }
+            }
+            MemoryCommands::Search {
+                query,
+                scope,
+                limit,
+            } => {
+                let items = run_memory_search(&repo_root, &query, scope.as_deref(), limit)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&items)?);
+                } else if items.is_empty() {
+                    println!("no memory directives");
+                } else {
+                    for item in items {
+                        println!(
+                            "{} [{}:{}] {}",
+                            item.key, item.scope, item.source, item.body
+                        );
+                    }
                 }
             }
             MemoryCommands::List { scope, limit } => {
@@ -557,6 +597,43 @@ fn run() -> Result<()> {
                     }
                 }
             }
+            BenchmarkCommands::MemorySuite {
+                spec,
+                report_out,
+                json_out,
+            } => {
+                let report = run_memory_ab_benchmark_suite(
+                    &repo_root,
+                    &spec,
+                    &report_out,
+                    json_out.as_deref(),
+                )?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    println!("title: {}", report.title);
+                    println!("case_count: {}", report.summary.case_count);
+                    println!(
+                        "avg_token_reduction_pct: {:.2}",
+                        report.summary.avg_token_reduction_pct
+                    );
+                    println!(
+                        "avg_query_coverage markdown={:.2} graph={:.2}",
+                        report.summary.avg_markdown_query_term_coverage,
+                        report.summary.avg_graph_query_term_coverage
+                    );
+                    println!(
+                        "quality_wins markdown={} graph={} ties={}",
+                        report.summary.markdown_quality_wins,
+                        report.summary.graph_quality_wins,
+                        report.summary.ties
+                    );
+                    println!("report_markdown_path: {}", report.report_markdown_path);
+                    if let Some(path) = report.json_output_path.as_deref() {
+                        println!("json_output_path: {path}");
+                    }
+                }
+            }
         },
         Commands::Stats => {
             let stats_path = repo_root.join(".ctx/stats/latest.json");
@@ -597,83 +674,40 @@ fn intent_label(intent: ctx_intake::Intent) -> &'static str {
     }
 }
 
-fn parse_agent(raw: &str) -> Result<Agent> {
-    match raw.to_ascii_lowercase().as_str() {
-        "codex" => Ok(Agent::Codex),
-        "claude" | "claude-code" => Ok(Agent::Claude),
-        "opencode" | "open-code" => Ok(Agent::OpenCode),
-        "generic" => Ok(Agent::Generic),
-        other => Err(anyhow!(
-            "unknown adapter '{other}'. Expected one of: codex, claude, opencode, generic"
-        )),
-    }
-}
-
-fn render_mcp_config(repo_root: &std::path::Path, client: &str, port: u16) -> Result<String> {
-    match client.to_ascii_lowercase().as_str() {
-        "claude" | "claude-code" => Ok(serde_json::to_string_pretty(&serde_json::json!({
-            "mcpServers": {
-                "ctx": {
-                    "command": "ctx",
-                    "args": [
-                        "--repo-root",
-                        repo_root.to_string_lossy(),
-                        "mcp",
-                        "stdio"
-                    ]
-                }
-            }
-        }))?),
-        "http" | "generic-http" => Ok(serde_json::to_string_pretty(&serde_json::json!({
-            "name": "ctx",
-            "transport": "http-json-rpc",
-            "url": format!("http://127.0.0.1:{port}/rpc"),
-            "health": format!("http://127.0.0.1:{port}/health"),
-            "repo_root": repo_root.to_string_lossy()
-        }))?),
-        other => Err(anyhow!(
-            "unknown MCP config client '{other}'. Expected: claude or http"
-        )),
-    }
-}
-
-fn run_adapter_wrapper(
-    repo_root: &std::path::Path,
-    agent: Agent,
-    query: &str,
-    budget: Option<usize>,
-    attach: Option<&std::path::Path>,
-    json: bool,
-) -> Result<()> {
-    let report = run_agent_invocation(repo_root, agent, query, budget, attach)?;
-
-    if json {
+fn print_host_install_report(report: serde_json::Value, as_json: bool) -> Result<()> {
+    if as_json {
         println!("{}", serde_json::to_string_pretty(&report)?);
-    } else if report.fallback_used {
-        eprintln!(
-            "ctx warning: '{}' not found in PATH. Falling back to prepared context output.",
-            agent.label()
-        );
-        println!(
-            "adapter={}\ncommand={}\n{}",
-            report.agent,
-            report.command,
-            report.prompt_preview.unwrap_or_default()
-        );
+        return Ok(());
     }
 
-    if report.status == "failed" {
-        Err(anyhow!(
-            "adapter '{}' exited with non-zero status: {:?}",
-            report.agent,
-            report.exit_code
-        ))
-    } else {
-        Ok(())
+    println!(
+        "installed {} integration",
+        report["display_name"].as_str().unwrap_or("CTX host")
+    );
+    println!(
+        "config_path: {}",
+        report["config_path"].as_str().unwrap_or("")
+    );
+    if let Some(commands_dir) = report["commands_dir"].as_str() {
+        println!("commands_dir: {commands_dir}");
     }
+    if let Some(commands_written) = report["commands_written"].as_u64() {
+        println!("commands_written: {commands_written}");
+    }
+    if let Some(skills_dir) = report["skills_dir"].as_str() {
+        println!("skills_dir: {skills_dir}");
+    }
+    if let Some(skills_written) = report["skills_written"].as_u64() {
+        println!("skills_written: {skills_written}");
+    }
+    if let Some(next) = report["next_step"].as_str() {
+        println!("next: {next}");
+    }
+
+    Ok(())
 }
 
-fn render_doctor_report(repo_root: &std::path::Path) -> String {
+fn render_doctor_report(repo_root: &Path) -> String {
     let config_path = repo_root.join(".ctx/config.toml");
     let graph_path = repo_root.join(".ctx/graph.db");
     let stats_dir = repo_root.join(".ctx/stats");
@@ -738,6 +772,12 @@ fn command_guide() -> &'static str {
 
 Each command shows what it does and one usage example.
 
+Primary OpenCode path:
+- run `ctx opencode install` once in the repo
+- open `opencode`
+- use `/ctx-*` commands inside OpenCode
+- legacy wrapper commands have been removed from the public CLI
+
 1) ctx init
 What it does: Initializes local runtime folders, config, and graph database.
 Example: ctx init
@@ -791,68 +831,79 @@ Example: ctx explain "fix failing pytest in auth"
 What it does: Runs hybrid retrieval (graph + snippets + semantic ranking).
 Example: ctx retrieve "refresh token auth failure" --limit 5
 
-14) ctx codex <query>
-What it does: Builds compact context, runs `codex exec`, and records local invocation telemetry.
-Example: ctx codex "review the last diff and find risky changes"
+14) ctx opencode install
+What it does: Primary OpenCode bootstrap. Writes `opencode.json` and `.opencode/commands/*.md` for host-native CTX usage.
+Example: ctx opencode install
 
-15) ctx claude <query>
-What it does: Builds compact context, runs `claude -p`, and records local invocation telemetry.
-Example: ctx claude "explain why this test is flaky"
+15) ctx codex install
+What it does: Writes project-local Codex MCP config and CTX skills so CTX can be used inside Codex without wrapper-style daily commands.
+Example: ctx codex install
 
-16) ctx opencode run <query>
-What it does: Builds compact context, runs `opencode run`, and records local invocation telemetry.
-Example: ctx opencode run "implement caching for embeddings"
+16) ctx claude install
+What it does: Writes project-local Claude Code MCP config and CTX skills so CTX can be used inside Claude Code through native skills.
+Example: ctx claude install
 
-17) ctx wrap <agent> --prompt <query>
-What it does: Generic wrapper entrypoint for codex, claude, opencode, or generic adapters.
-Example: ctx wrap claude --prompt "explain why this test is flaky"
-
-18) ctx mcp serve [--port p] [--once]
+17) ctx mcp serve [--port p] [--once]
 What it does: Starts local MCP-compatible RPC server on localhost.
 Example: ctx mcp serve --port 8765
 Example: ctx mcp serve --port 8765 --once
 
-19) ctx mcp stdio
+18) ctx mcp stdio
 What it does: Runs MCP JSON-RPC over stdin/stdout for clients that launch local MCP commands.
 Example: ctx --repo-root /path/to/project mcp stdio
 
-20) ctx mcp config claude
-What it does: Prints a Claude Code MCP configuration snippet for this repository.
+19) ctx mcp config <client>
+What it does: Prints an MCP configuration snippet for a supported host client.
 Example: ctx mcp config claude
+Example: ctx mcp config codex
+Example: ctx mcp config opencode
 
-21) ctx memory set <key> <body> [--scope s] [--source src]
+20) ctx memory set <key> <body> [--scope s] [--source src]
 What it does: Upserts a graph-backed memory directive replacing markdown habit files.
 Example: ctx memory set testing.always_run "Run targeted tests before completion" --scope project --source manual
 
-22) ctx memory get <key>
+21) ctx memory get <key>
 What it does: Reads one memory directive from graph memory.
 Example: ctx memory get testing.always_run
 
-23) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
+22) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
 What it does: Imports markdown habit files (AGENTS/CLAUDE/CODEX) into graph memory directives.
 Example: ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
+
+23) ctx memory bootstrap [paths...] [--scope s] [--source src]
+What it does: Auto-imports conventional markdown rule files like `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
+Example: ctx memory bootstrap
+Example: ctx memory bootstrap AGENTS.md .github/copilot-instructions.md
 
 24) ctx memory export --to <file> [--scope s] [--limit n]
 What it does: Exports graph memory directives back to markdown for compatibility or auditing.
 Example: ctx memory export --to AGENTS.generated.md --scope project --limit 200
 
-25) ctx memory list [--scope s] [--limit n]
+25) ctx memory search <query> [--scope s] [--limit n]
+What it does: Searches graph memory by topic so you can inspect only the relevant directives.
+Example: ctx memory search "auth tests root cause" --scope project --limit 10
+
+26) ctx memory list [--scope s] [--limit n]
 What it does: Lists recent memory directives (optionally filtered by scope).
 Example: ctx memory list --scope project --limit 10
 
-26) ctx memory delete <key>
+27) ctx memory delete <key>
 What it does: Deletes one memory directive from graph memory.
 Example: ctx memory delete testing.always_run
 
-27) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
+28) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
 What it does: Compares graph memory directives vs markdown rules on token cost, query coverage and optional quality/success via checklist + answer files.
 Example: ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENTS.md --limit 20
 
-28) ctx stats
-What it does: Prints latest local telemetry snapshot, including token reduction, latency, adapter status, and fallback metadata.
+29) ctx benchmark memory-suite --spec <file> --report-out <file> [--json-out <file>]
+What it does: Runs a reusable benchmark suite from a spec file and writes publishable markdown/JSON reports.
+Example: ctx benchmark memory-suite --spec benchmarks/memory-ab.example.toml --report-out benchmarks/report.md --json-out benchmarks/report.json
+
+30) ctx stats
+What it does: Prints latest local telemetry snapshot, including token reduction and runtime metadata.
 Example: ctx stats
 
-29) ctx doctor
+31) ctx doctor
 What it does: Checks first-run/install readiness: config, graph, local stats, audit log, and privacy defaults.
 Example: ctx doctor
 

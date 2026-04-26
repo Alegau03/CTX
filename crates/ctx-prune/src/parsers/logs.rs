@@ -7,6 +7,7 @@ pub(crate) fn parse_log_candidates(input: &str) -> Vec<Candidate> {
 
     parse_python_tracebacks(&lines, &mut candidates);
     parse_pytest(&lines, &mut candidates);
+    parse_vitest_and_jest(&lines, &mut candidates);
     parse_typescript_and_eslint(&lines, &mut candidates);
     parse_python_linters(&lines, &mut candidates);
     parse_cargo(&lines, &mut candidates);
@@ -100,6 +101,28 @@ fn parse_pytest(lines: &[&str], candidates: &mut Vec<Candidate>) {
 
         if let Some((reason, priority)) = reason_priority {
             candidates.push(Candidate::new(idx, trimmed, reason, priority));
+        }
+    }
+}
+
+fn parse_vitest_and_jest(lines: &[&str], candidates: &mut Vec<Candidate>) {
+    let vitest_failed_test = Regex::new(r"^\s*[×x]\s+.+\d+ms$").expect("valid regex");
+    let vitest_assertion = Regex::new(r"^\s*→\s+").expect("valid regex");
+    let jest_fail = Regex::new(r"^\s*FAIL\s+.+").expect("valid regex");
+    let jest_detail = Regex::new(r"^\s*(●|expect\(|Received:)").expect("valid regex");
+
+    for (idx, raw) in lines.iter().enumerate() {
+        let trimmed = raw.trim_end();
+        let compact = trimmed.trim();
+
+        if vitest_failed_test.is_match(compact) {
+            candidates.push(Candidate::new(idx, compact, "vitest:failed_test", 100));
+        } else if vitest_assertion.is_match(compact) {
+            candidates.push(Candidate::new(idx, compact, "vitest:assertion", 95));
+        } else if jest_fail.is_match(compact) {
+            candidates.push(Candidate::new(idx, compact, "jest:failed_suite", 100));
+        } else if jest_detail.is_match(compact) {
+            candidates.push(Candidate::new(idx, compact, "jest:detail", 90));
         }
     }
 }
@@ -220,6 +243,13 @@ fn parse_npm(lines: &[&str], candidates: &mut Vec<Candidate>) {
         let trimmed = raw.trim();
         if trimmed.starts_with("npm ERR!") || trimmed.starts_with("ERR!") {
             candidates.push(Candidate::new(idx, trimmed, "npm:error", 100));
+        } else if trimmed.starts_with("yarn error") {
+            candidates.push(Candidate::new(idx, trimmed, "yarn:error", 100));
+        } else if trimmed.starts_with("pnpm ERR!") || trimmed.contains("ERR_PNPM_") {
+            candidates.push(Candidate::new(idx, trimmed, "pnpm:error", 100));
+        } else if trimmed.starts_with("error: GET http") || trimmed.starts_with("error: GET https")
+        {
+            candidates.push(Candidate::new(idx, trimmed, "bun:error", 100));
         } else if trimmed.contains("ERESOLVE") || trimmed.contains("ELIFECYCLE") {
             candidates.push(Candidate::new(idx, trimmed, "npm:resolution", 100));
         } else if trimmed.to_lowercase().contains("deprecated") {

@@ -22,8 +22,10 @@ fn exposes_required_pdf_tools() {
         "memory_list",
         "memory_set",
         "memory_get",
+        "memory_search",
         "memory_delete",
         "memory_import_markdown",
+        "memory_bootstrap_markdown",
     ] {
         assert!(
             tools.iter().any(|t| t.name == required),
@@ -171,6 +173,64 @@ fn tools_call_memory_set_and_list_work() {
         .as_array()
         .expect("directives array");
     assert!(!directives.is_empty());
+}
+
+#[test]
+fn tools_call_memory_bootstrap_and_search_work() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    std::fs::write(
+        tmp.path().join("AGENTS.md"),
+        "# Rules\n- Run targeted tests before completion.\n- Fix auth root cause before merge.\n",
+    )
+    .expect("write agents");
+
+    let bootstrap = roundtrip_once(
+        tmp.path(),
+        json!({
+            "jsonrpc":"2.0",
+            "id":7,
+            "method":"tools/call",
+            "params":{
+                "name":"memory_bootstrap_markdown",
+                "arguments":{}
+            }
+        }),
+    );
+    assert_eq!(bootstrap["result"]["report"]["imported_files"], 1);
+    assert!(
+        bootstrap["result"]["report"]["imported_directives"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 2
+    );
+
+    let search = roundtrip_once(
+        tmp.path(),
+        json!({
+            "jsonrpc":"2.0",
+            "id":8,
+            "method":"tools/call",
+            "params":{
+                "name":"memory_search",
+                "arguments":{
+                    "query":"auth root cause",
+                    "scope":"project",
+                    "limit":10
+                }
+            }
+        }),
+    );
+    let directives = search["result"]["directives"]
+        .as_array()
+        .expect("directives array");
+    assert!(!directives.is_empty());
+    assert!(
+        directives[0]["body"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Fix auth root cause")
+    );
 }
 
 fn roundtrip_once(repo_root: &Path, rpc_payload: Value) -> Value {

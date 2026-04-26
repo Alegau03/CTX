@@ -1,5 +1,7 @@
 # CTX Context Runtime Engine Implementation Plan
 
+> Historical note: this is the original greenfield implementation plan. It intentionally contains wrapper-era tasks and early assumptions that are no longer the current product direction. Use `README.md` and `docs/superpowers/plans/2026-04-25-final-release-roadmap.md` as the current source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a local-first Context Runtime Engine for coding agents that cuts noisy context, preserves high-signal code evidence, and improves task outcomes while staying provider-agnostic.
@@ -558,3 +560,9 @@ Mitigation: reproducible benchmarks, public task definitions, transparent metric
 - [ ] Execute Tasks 8-10 second (core differentiation).
 - [ ] Execute Tasks 11-14 third (integrations and trust).
 - [ ] Execute Tasks 15-19 fourth (distribution, credibility, growth).
+
+## 12) Priority Override
+
+- [ ] OpenCode host-native integration now overrides the original execution order as the top product priority.
+- [ ] Wrapper paths remain compatibility-only until the OpenCode-native path is complete.
+- [ ] See `docs/opencode-integration.md` and `docs/superpowers/plans/2026-04-24-opencode-host-first.md`.

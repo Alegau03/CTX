@@ -74,7 +74,7 @@ Examples of audited events:
 - blocked sensitive attachment during `ctx pack`
 - skipped sensitive source path during `ctx index`
 - context pack summary with included/excluded section counts
-- adapter invocation metadata for `ctx codex`, `ctx claude`, `ctx opencode` and `ctx wrap`
+- adapter invocation metadata when the internal compatibility backend is exercised programmatically or in tests
 
 The audit log is intentionally local and append-only from CTX's point of view. Users can delete it manually if they want to reset local history.
 
@@ -87,6 +87,8 @@ Recommended usage:
 ```bash
 ctx --repo-root /path/to/project mcp stdio
 ```
+
+This is also the preferred transport for host-native OpenCode integration.
 
 Trust assumptions:
 

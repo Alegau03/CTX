@@ -34,6 +34,31 @@ fn index_and_graph_query_find_code_files() {
 }
 
 #[test]
+fn index_and_graph_query_find_typescript_symbols() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.ts"),
+        r#"
+export class AuthService {
+  validateRefreshToken(token: string): boolean {
+    return token.length > 0;
+  }
+}
+"#,
+    )
+    .expect("write");
+
+    let count = run_index(tmp.path(), &[]).expect("index");
+    assert!(count >= 1);
+
+    let matches = run_graph_query(tmp.path(), "auth").expect("query");
+    assert!(matches.iter().any(|m| m.ends_with("src/auth.ts")));
+}
+
+#[test]
 fn run_pack_returns_compact_context() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");
@@ -231,4 +256,47 @@ fn decode_token(token: &str) -> bool {
             .iter()
             .any(|entry| entry.contains("included"))
     );
+}
+
+#[test]
+fn run_pack_uses_cross_file_dependencies_from_import_and_call_graph() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/tokens.rs"),
+        r#"
+pub fn decode_token(token: &str) -> bool {
+    !token.is_empty()
+}
+"#,
+    )
+    .expect("write tokens");
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        r#"
+use crate::tokens::decode_token;
+
+pub fn validate_refresh_token(token: &str) -> bool {
+    decode_token(token)
+}
+"#,
+    )
+    .expect("write auth");
+
+    run_index(tmp.path(), &[]).expect("index");
+
+    let packed = run_pack(
+        tmp.path(),
+        "fix refresh token decode failure",
+        Some(220),
+        None,
+    )
+    .expect("pack");
+
+    assert!(packed.compact_context.contains("dependencies:"));
+    assert!(packed.compact_context.contains("validate_refresh_token"));
+    assert!(packed.compact_context.contains("decode_token"));
+    assert!(packed.compact_context.contains("src/tokens.rs"));
 }

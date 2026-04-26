@@ -67,3 +67,43 @@ FAIL github.com/example/payments 0.10s
     assert!(report.output.contains("--- FAIL: TestPayment"));
     assert!(!report.output.contains("warning: unused import"));
 }
+
+#[test]
+fn parser_packs_cover_vitest_jest_and_alt_package_managers() {
+    let input = r#"
+ RUN  v1.6.0 /repo
+ ❯ src/auth.test.ts (3)
+   × refresh token rotates 12ms
+     → expected rotated token
+
+ FAIL  src/session.test.ts
+  ● session refresh
+
+    expect(received).toBeTruthy()
+
+    Received: false
+
+yarn error v1.22.19
+yarn error An unexpected error occurred: "https://registry.yarnpkg.com/foo: Not found".
+pnpm ERR!  ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/foo: Not Found - 404
+bun install v1.1.0
+error: GET https://registry.npmjs.org/foo - 404
+"#;
+
+    let report = prune_logs(input, 50);
+
+    assert!(report.output.contains("× refresh token rotates 12ms"));
+    assert!(report.output.contains("expected rotated token"));
+    assert!(report.output.contains("FAIL  src/session.test.ts"));
+    assert!(report.output.contains("expect(received).toBeTruthy()"));
+    assert!(report.output.contains("Received: false"));
+    assert!(report.output.contains("yarn error"));
+    assert!(report.output.contains("ERR_PNPM_FETCH_404"));
+    assert!(
+        report
+            .output
+            .contains("error: GET https://registry.npmjs.org/foo - 404")
+    );
+    assert!(!report.output.contains("RUN  v1.6.0 /repo"));
+    assert!(!report.output.contains("bun install v1.1.0"));
+}

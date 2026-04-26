@@ -2,6 +2,19 @@
 
 CTX is distributed as a local-first CLI named `ctx`.
 
+## Product Direction
+
+The `ctx` binary is the local bootstrap/runtime layer that enables host-native usage.
+
+The target user experience, starting with OpenCode, is different:
+
+- install `ctx`
+- enable CTX for the repo once
+- open `opencode`
+- use CTX from inside OpenCode
+
+Daily usage should not require a second terminal or wrapper-centric prompts.
+
 Supported install paths:
 
 - GitHub Releases binary archive
@@ -108,6 +121,54 @@ Expected behavior:
 - `ctx index` writes project files/symbols into the local graph;
 - `ctx ask` prints compact context without invoking an agent.
 
+## OpenCode-First Target
+
+The long-term primary integration path is OpenCode-native:
+
+- CTX MCP tools connected through project-local OpenCode config
+- CTX commands available inside OpenCode through `.opencode/commands/`
+- normal OpenCode prompts benefiting from CTX automatically
+
+First concrete bootstrap step available now:
+
+```bash
+ctx mcp config opencode
+```
+
+This prints the `opencode.json` MCP snippet for the current repository.
+
+Repo-local bootstrap available now:
+
+```bash
+ctx opencode install
+```
+
+This creates or merges `opencode.json` and generates `.opencode/commands/*.md` so the repository can be opened directly in OpenCode with CTX commands already available.
+
+It also generates `.opencode/instructions/ctx-host-first.md` and adds project instructions to `opencode.json`, so OpenCode loads CTX guidance automatically at startup.
+
+Additional host-native bootstraps now available:
+
+```bash
+ctx codex install
+ctx claude install
+```
+
+What they do:
+
+- `ctx codex install` writes `.codex/config.toml` plus `.agents/skills/ctx-*/SKILL.md`
+- `ctx claude install` writes `.mcp.json` plus `.claude/skills/ctx-*/SKILL.md`
+
+This repository is now aligned to the host-native model. The old wrapper-style public CLI entrypoints have been removed in favor of native host integrations.
+
+Installation guidance:
+
+- validate installation with `ctx doctor`, `ctx init`, `ctx index`, and `ctx opencode install`
+- prefer testing CTX from inside OpenCode after bootstrap
+- bootstrap graph memory from `AGENTS.md`-style files with `/ctx-memory-bootstrap`
+- inspect only relevant directives with `/ctx-memory-search <topic>`
+- do not rebuild a wrapper-first workflow around CTX; use `/ctx-*` inside OpenCode after bootstrap
+
 ## Release Build
 
 Build, test, package and smoke-test the current platform:
@@ -149,6 +210,20 @@ What it verifies:
 - `ctx pack`
 - `ctx stats`
 - `ctx mcp stdio`
+
+OpenCode-first smoke:
+
+```bash
+scripts/release/opencode-smoke.sh ./target/release/ctx
+```
+
+What it verifies:
+
+- `ctx opencode install`
+- `opencode.json` local CTX MCP wiring
+- generated `.opencode/commands/` command files
+- generated `.opencode/instructions/ctx-host-first.md`
+- host-first rules still deprecate wrapper-style workflows
 
 ## Troubleshooting
 
