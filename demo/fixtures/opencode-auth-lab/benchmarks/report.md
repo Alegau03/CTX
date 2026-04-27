@@ -3,7 +3,7 @@
 ## Summary
 
 - Cases: 1
-- Token reduction (avg %): 75.81
+- Token reduction (avg %): 67.20
 - Query coverage markdown=1.00 graph=1.00
 - Latency (avg ms): 2.00
 - Success rate markdown=0.33 graph=1.00
@@ -13,4 +13,4 @@
 
 | Case | Token reduction % | Markdown coverage | Graph coverage | Quality winner | Latency ms |
 |---|---:|---:|---:|---|---:|
-| auth_rules | 75.81 | 1.00 | 1.00 | graph | 2 |
+| auth_rules | 67.20 | 1.00 | 1.00 | graph | 2 |

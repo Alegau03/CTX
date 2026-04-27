@@ -1,0 +1,27 @@
+{
+  "original_estimated_tokens": 235,
+  "packed_tokens": 165,
+  "reduction_pct": 29.78723404255319,
+  "included": [
+    "query included: priority=Query tokens=6 ref=",
+    "tests included: priority=Test tokens=7 ref=",
+    "tests included: priority=Test tokens=6 ref=",
+    "recent_diff included: priority=RecentDiff tokens=9 ref=",
+    "dependencies included: priority=Dependency tokens=8 ref=",
+    "dependencies included: priority=Dependency tokens=8 ref=",
+    "dependencies included: priority=Dependency tokens=7 ref=",
+    "memory included: priority=DirectiveMemory tokens=12 ref=project",
+    "memory included: priority=DirectiveMemory tokens=12 ref=project",
+    "memory included: priority=DirectiveMemory tokens=12 ref=project",
+    "memory included: priority=DirectiveMemory tokens=12 ref=project",
+    "docs included: priority=Docs tokens=14 ref=unknown",
+    "docs included: priority=Docs tokens=12 ref=unknown",
+    "docs included: priority=Docs tokens=12 ref=unknown",
+    "docs included: priority=Docs tokens=13 ref=unknown",
+    "docs included: priority=Docs tokens=14 ref=unknown",
+    "docs included: priority=Docs tokens=12 ref=unknown"
+  ],
+  "excluded": [],
+  "pack_path": "/Users/alessandrogautieri/Documents/coding/ctx/demo/fixtures/opencode-auth-lab/.ctx/packs/pack-1777281646676.json",
+  "compact_context": "query: fix refresh token rotation\ntests: tests/auth/refresh-route.test.ts::rotates refresh tokens\ntests: tests/auth/refresh-route.test.ts::refresh route\nrecent_diff: diff_files:demo/fixtures/opencode-auth-lab/.ctx/graph.db changed_symbols:n/a changes:+0/-0\ndependencies: src/http/refresh-route.ts::handleRefreshRoute->src/auth/session.ts::refreshSession (function)\ndependencies: src/http/refresh-route.ts::handleRefreshRoute->src/lib/retry.ts::retry (function)\ndependencies: src/auth/tokens.ts::rotateRefreshToken->src/auth/tokens.ts::issueRefreshToken (function)\nmemory: markdown:copilot.instructions.1] Copilot Instructions: Prefer auth fixtures ... @project\nmemory: markdown:agents.6] Documentation And Benchmarks: Fix root ... @project\nmemory: markdown:agents.9] Documentation And Benchmarks: Keep route, ... @project\nmemory: markdown:agents.3] Documentation And Benchmarks: the benchmark ... @project\ndocs: describe(\"refresh route\", () => { it(\"rotates ... @unknown\ndocs: it(\"labels the refreshed session token\", () ... @unknown\ndocs: function refreshSession(userId: string): string { const ... @unknown\ndocs: it(\"rotates refresh tokens\", async () => ... @unknown\ndocs: describe(\"session\", () => { it(\"labels the ... @unknown\ndocs: function tokenLabel(token: string): string { return ... @unknown"
+}
