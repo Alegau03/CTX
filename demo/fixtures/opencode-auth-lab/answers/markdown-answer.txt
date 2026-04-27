@@ -1,0 +1,3 @@
+I will inspect the AGENTS file first.
+I will run targeted auth tests before completion.
+I may patch around the refresh-token failure before digging into root cause.

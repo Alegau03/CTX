@@ -1,0 +1,13 @@
+{
+  "name": "opencode-auth-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:auth": "vitest run tests/auth"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

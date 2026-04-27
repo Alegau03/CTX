@@ -3,10 +3,43 @@ use predicates::prelude::*;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
 use tempfile::tempdir;
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    if !src.exists() {
+        return;
+    }
+    fs::create_dir_all(dst).expect("create destination directory");
+    for entry in fs::read_dir(src).expect("read source directory") {
+        let entry = entry.expect("read directory entry");
+        let name = entry.file_name();
+        if matches!(
+            name.to_str(),
+            Some(".ctx") | Some(".opencode") | Some("opencode.json")
+        ) {
+            continue;
+        }
+        let file_type = entry.file_type().expect("read entry type");
+        let target = dst.join(name);
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &target);
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), target).expect("copy file");
+        }
+    }
+}
+
+fn cloned_demo_fixture() -> tempfile::TempDir {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = root.join("demo/fixtures/opencode-auth-lab");
+    let temp = tempdir().expect("create tempdir");
+    copy_dir_recursive(&source, temp.path());
+    temp
+}
 
 #[test]
 fn init_creates_ctx_config() {
@@ -375,7 +408,7 @@ fn opencode_install_creates_project_config_and_command_files() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["commands_written"], 31);
+    assert_eq!(report["commands_written"], 32);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -400,6 +433,7 @@ fn opencode_install_creates_project_config_and_command_files() {
     );
 
     for command in [
+        "ctx.md",
         "ctx-help.md",
         "ctx-init.md",
         "ctx-index.md",
@@ -444,6 +478,13 @@ fn opencode_install_creates_project_config_and_command_files() {
         std::fs::read_to_string(host_first).expect("read host-first instructions");
     assert!(host_first_text.contains("Prefer CTX slash commands and CTX MCP tools"));
     assert!(host_first_text.contains("Do not revive wrapper-style workflows"));
+
+    let menu_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx.md"))
+        .expect("read ctx menu command");
+    assert!(menu_command.contains("description: Menu |"));
+    assert!(menu_command.contains("CTX Command Center"));
+    assert!(menu_command.contains("Recommended Start"));
+    assert!(menu_command.contains("/ctx-pack <task>"));
 }
 
 #[test]
@@ -459,7 +500,7 @@ fn codex_install_creates_project_config_and_skill_assets() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["skills_written"], 31);
+    assert_eq!(report["skills_written"], 32);
 
     let config =
         std::fs::read_to_string(tmp.path().join(".codex/config.toml")).expect("codex config");
@@ -488,7 +529,7 @@ fn claude_install_creates_project_mcp_and_skill_assets() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["skills_written"], 31);
+    assert_eq!(report["skills_written"], 32);
 
     let config = std::fs::read_to_string(tmp.path().join(".mcp.json")).expect("claude mcp config");
     let value: serde_json::Value = serde_json::from_str(&config).expect("claude mcp json");
@@ -633,6 +674,8 @@ fn release_assets_are_present_and_document_install_paths() {
         .expect("install smoke script should exist");
     let opencode_smoke = fs::read_to_string(root.join("scripts/release/opencode-smoke.sh"))
         .expect("opencode smoke script should exist");
+    let verify_script = fs::read_to_string(root.join("scripts/release/verify-artifact.sh"))
+        .expect("artifact verify script should exist");
     let formula =
         fs::read_to_string(root.join("Formula/ctx.rb")).expect("homebrew formula should exist");
     let install_docs =
@@ -643,7 +686,9 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(build_script.contains("build --release"));
     assert!(build_script.contains("SHA256SUMS"));
     assert!(build_script.contains("tar"));
+    assert!(build_script.contains("release-manifest.json"));
     assert!(build_script.contains("opencode-smoke.sh"));
+    assert!(build_script.contains("verify-artifact.sh"));
     assert!(smoke_script.contains("doctor"));
     assert!(smoke_script.contains("mcp stdio"));
     assert!(opencode_smoke.contains("opencode install"));
@@ -652,6 +697,11 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-search.md"));
     assert!(opencode_smoke.contains(".opencode/instructions/ctx-host-first.md"));
     assert!(opencode_smoke.contains("opencode.json"));
+    assert!(verify_script.contains("SHA256SUMS"));
+    assert!(verify_script.contains("tar -xzf"));
+    assert!(verify_script.contains("install-smoke.sh"));
+    assert!(verify_script.contains("opencode-smoke.sh"));
+    assert!(verify_script.contains("opencode-auth-lab-benchmark.sh"));
     assert!(formula.contains("class Ctx < Formula"));
     assert!(formula.contains("\"cargo\", \"install\""));
     assert!(formula.contains("\"doctor\""));
@@ -662,6 +712,8 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("ctx codex install"));
     assert!(install_docs.contains("ctx claude install"));
     assert!(install_docs.contains("scripts/release/opencode-smoke.sh"));
+    assert!(install_docs.contains("scripts/release/verify-artifact.sh"));
+    assert!(install_docs.contains("release-manifest.json"));
     assert!(readme.contains("docs/codex-integration.md"));
     assert!(readme.contains("docs/claude-integration.md"));
     assert!(readme.contains("guide.md"));
@@ -703,6 +755,138 @@ fn opencode_release_smoke_script_bootstraps_host_first_assets() {
             assert!(String::from_utf8_lossy(&output.stdout).contains("CTX OpenCode smoke passed:"));
         })
         .expect("run opencode smoke script");
+}
+
+#[test]
+fn demo_fixture_cli_smoke_runs_successfully() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("scripts/demo/opencode-auth-lab-smoke.sh");
+    let ctx_bin = assert_cmd::cargo::cargo_bin("ctx");
+    let fixture = cloned_demo_fixture();
+
+    let output = std::process::Command::new(script)
+        .arg(ctx_bin)
+        .env("CTX_DEMO_FIXTURE", fixture.path())
+        .current_dir(&root)
+        .output()
+        .expect("run demo smoke");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("CTX demo smoke passed:"));
+}
+
+#[test]
+fn demo_fixture_benchmark_script_writes_reports() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("scripts/demo/opencode-auth-lab-benchmark.sh");
+    let ctx_bin = assert_cmd::cargo::cargo_bin("ctx");
+    let fixture = cloned_demo_fixture();
+
+    let output = std::process::Command::new(script)
+        .arg(ctx_bin)
+        .env("CTX_DEMO_FIXTURE", fixture.path())
+        .current_dir(&root)
+        .output()
+        .expect("run benchmark smoke");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fixture.path().join("benchmarks/report.md").exists());
+    assert!(fixture.path().join("benchmarks/report.json").exists());
+}
+
+#[test]
+fn release_verify_script_validates_packaged_artifact() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let verify_script = root.join("scripts/release/verify-artifact.sh");
+    let ctx_bin = assert_cmd::cargo::cargo_bin("ctx");
+    let temp = tempfile::tempdir().expect("create tempdir");
+    let package_dir = temp.path().join("ctx-0.1.0-test-target");
+    let tarball = temp.path().join("ctx-0.1.0-test-target.tar.gz");
+    let checksums = temp.path().join("SHA256SUMS");
+
+    fs::create_dir_all(&package_dir).expect("create package dir");
+    fs::copy(&ctx_bin, package_dir.join("ctx")).expect("copy ctx binary into package dir");
+    fs::write(package_dir.join("README.md"), "ctx test package\n").expect("write readme");
+    fs::write(package_dir.join("INSTALL.md"), "ctx install docs\n").expect("write install");
+
+    let status = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(&tarball)
+        .arg("ctx-0.1.0-test-target")
+        .current_dir(temp.path())
+        .status()
+        .expect("create tarball");
+    assert!(status.success(), "tar should succeed");
+
+    let digest_output = std::process::Command::new("shasum")
+        .arg("-a")
+        .arg("256")
+        .arg(&tarball)
+        .output()
+        .expect("hash tarball");
+    assert!(
+        digest_output.status.success(),
+        "shasum should succeed: {}",
+        String::from_utf8_lossy(&digest_output.stderr)
+    );
+    fs::write(&checksums, digest_output.stdout).expect("write checksums");
+
+    let output = std::process::Command::new(verify_script)
+        .arg(&tarball)
+        .arg(&checksums)
+        .current_dir(&root)
+        .output()
+        .expect("run artifact verify script");
+
+    assert!(
+        output.status.success(),
+        "verify artifact script failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("CTX release artifact verification passed:"),
+        "expected success banner from verify-artifact.sh"
+    );
+}
+
+#[test]
+fn release_docs_cover_qa_and_community_assets() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = fs::read_to_string(root.join("README.md")).expect("readme should exist");
+    let install_docs =
+        fs::read_to_string(root.join("docs/install.md")).expect("install docs should exist");
+    let release_playbook = fs::read_to_string(root.join("docs/release-playbook.md"))
+        .expect("release playbook should exist");
+    let final_qa =
+        fs::read_to_string(root.join("docs/final-qa.md")).expect("final QA doc should exist");
+    let release_template = fs::read_to_string(root.join(".github/RELEASE_TEMPLATE.md"))
+        .expect("release template should exist");
+    let qa_script = fs::read_to_string(root.join("scripts/release/final-qa.sh"))
+        .expect("final QA script should exist");
+
+    assert!(readme.contains("docs/release-playbook.md"));
+    assert!(readme.contains("docs/final-qa.md"));
+    assert!(install_docs.contains("scripts/release/final-qa.sh"));
+    assert!(release_playbook.contains("GitHub Release Title"));
+    assert!(release_playbook.contains("OpenCode Demo"));
+    assert!(release_playbook.contains("Benchmark Evidence"));
+    assert!(final_qa.contains("OpenCode-Native Final QA"));
+    assert!(final_qa.contains("/ctx-memory-bootstrap"));
+    assert!(final_qa.contains("/ctx-pack"));
+    assert!(release_template.contains("## Highlights"));
+    assert!(release_template.contains("## Install"));
+    assert!(qa_script.contains("verify-artifact.sh"));
+    assert!(qa_script.contains("opencode-auth-lab-smoke.sh"));
 }
 
 #[test]

@@ -16,5 +16,6 @@ walkdir.workspace = true
 rusqlite.workspace = true
 
 [dev-dependencies]
+assert_cmd.workspace = true
 ctx-config = { path = "../ctx-config" }
 tempfile.workspace = true

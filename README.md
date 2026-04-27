@@ -85,7 +85,19 @@ opencode
 
 After that, stay inside OpenCode and use `/ctx-*` commands.
 
+The best first command inside OpenCode is now:
+
+```text
+/ctx
+```
+
+It opens a categorized CTX command center with quickstart guidance, examples, and the best next command for the current repository state.
+
 The full usage order, command reference, examples, and expected outputs live in [guide.md](guide.md).
+
+The in-repo real-world validation project lives at:
+
+- `demo/fixtures/opencode-auth-lab`
 
 ## Host Integrations
 
@@ -154,7 +166,11 @@ See [docs/security.md](docs/security.md) for the full threat model and privacy b
 Start here:
 
 - [guide.md](guide.md): usage order, commands, examples, expected outputs, OpenCode-first workflow
-- [docs/install.md](docs/install.md): installation and release smoke flow
+- [docs/demo-walkthrough.md](docs/demo-walkthrough.md): end-to-end validation on the `demo/fixtures/opencode-auth-lab` fixture project
+- [docs/demo-script.md](docs/demo-script.md): live-demo order for presenting CTX on the fixture repo
+- [docs/install.md](docs/install.md): installation, release artifact verification, and smoke flow
+- [docs/release-playbook.md](docs/release-playbook.md): GitHub release framing, benchmark messaging, and launch checklist
+- [docs/final-qa.md](docs/final-qa.md): final OpenCode-native QA checklist and release gate
 - [docs/opencode-integration.md](docs/opencode-integration.md): OpenCode-native architecture target
 - [docs/security.md](docs/security.md): privacy defaults, threat model, and audit behavior
 - [docs/guidelines.md](docs/guidelines.md): product and architectural guardrails
@@ -170,7 +186,8 @@ Current implementation status:
 - Phase 2: wrapper cleanup complete
 - Phase 3: native host bootstraps complete
 - Phase 4: analysis and retrieval quality complete
-- Next focus: real-world demo validation, benchmark publication, and release polish
+- Phase 5: demo and benchmark evidence complete
+- Phase 6: packaging, release assets, and final QA complete except public Homebrew/tap coordinates
 
 ## Workspace Layout
 

@@ -425,8 +425,67 @@ struct HostActionTemplate {
 fn shared_action_templates() -> &'static [HostActionTemplate] {
     &[
         HostActionTemplate {
+            slug: "ctx",
+            description: "Menu | Open the CTX command center and quickstart",
+            body: r#"Show a clean, terminal-friendly **CTX Command Center** for the current repository.
+
+Start with the current repository status:
+!`ctx doctor`
+
+Then present this menu in English using short sections, aligned bullets, and clear next steps.
+
+# CTX Command Center
+
+## Recommended Start
+- `/ctx-doctor` - check repo health and next step
+- `/ctx-index` - build or refresh the graph
+- `/ctx-memory-bootstrap` - import AGENTS-style project rules
+- `/ctx-pack <task>` - build the smallest useful context pack
+
+## Setup
+- `/ctx-init`
+- `/ctx-index`
+- `/ctx-reindex`
+- `/ctx-opencode-install`
+
+## Context
+- `/ctx-pack <task>`
+- `/ctx-ask <task>`
+- `/ctx-retrieve <query>`
+- `/ctx-graph-query <query>`
+- `/ctx-explain <task>`
+
+## Memory
+- `/ctx-memory-bootstrap`
+- `/ctx-memory-search <topic>`
+- `/ctx-memory-list`
+- `/ctx-memory-get <key>`
+- `/ctx-memory-set <key> <body>`
+- `/ctx-memory-export <file>`
+
+## Debug
+- `/ctx-prune-logs <topic>`
+- `/ctx-prune-diff <topic>`
+- `/ctx-hook <task>`
+
+## Benchmark
+- `/ctx-benchmark-memory-ab ...`
+- `/ctx-benchmark-memory-suite ...`
+- `/ctx-stats`
+
+## MCP
+- `/ctx-mcp-stdio`
+- `/ctx-mcp-serve`
+- `/ctx-mcp-config-opencode`
+
+End with:
+1. the single best next command for the current repo state
+2. one copy-paste example
+3. a one-line explanation of why that command should come next"#,
+        },
+        HostActionTemplate {
             slug: "ctx-help",
-            description: "Show the full CTX command guide",
+            description: "Menu | Show the full CTX CLI command guide",
             body: r#"Current CTX command guide:
 
 !`ctx help`
@@ -435,7 +494,7 @@ Summarize the most relevant next CTX commands for the current task."#,
         },
         HostActionTemplate {
             slug: "ctx-init",
-            description: "Initialize CTX runtime for this repo",
+            description: "Setup | Initialize CTX runtime for this repository",
             body: r#"Initialize CTX in the current repository.
 
 Run `ctx init`.
@@ -443,7 +502,7 @@ Then show the output and tell the user the next recommended command."#,
         },
         HostActionTemplate {
             slug: "ctx-index",
-            description: "Index this repo or selected paths into CTX",
+            description: "Setup | Index this repository or selected paths into CTX",
             body: r#"Index this repository into CTX.
 
 Arguments:
@@ -454,7 +513,7 @@ Then show the output and explain what was indexed."#,
         },
         HostActionTemplate {
             slug: "ctx-reindex",
-            description: "Reindex selected paths into CTX",
+            description: "Setup | Reindex selected paths into CTX",
             body: r#"Reindex selected paths in the current repository.
 
 Arguments:
@@ -465,7 +524,7 @@ Then show the output and explain what changed."#,
         },
         HostActionTemplate {
             slug: "ctx-graph-build",
-            description: "Build the CTX graph from the repo",
+            description: "Setup | Build the CTX graph from this repository",
             body: r#"Build the CTX graph for the current repository.
 
 Run `ctx graph build`.
@@ -473,7 +532,7 @@ Then show the output and explain the result."#,
         },
         HostActionTemplate {
             slug: "ctx-graph-rebuild",
-            description: "Rebuild the CTX graph explicitly",
+            description: "Setup | Rebuild the CTX graph explicitly",
             body: r#"Rebuild the CTX graph for the current repository.
 
 Run `ctx graph rebuild`.
@@ -481,7 +540,7 @@ Then show the output and explain the result."#,
         },
         HostActionTemplate {
             slug: "ctx-doctor",
-            description: "Check CTX readiness for this repo",
+            description: "Setup | Check CTX repo health and next steps",
             body: r#"Current CTX doctor report:
 
 !`ctx doctor`
@@ -491,7 +550,7 @@ If something is missing, give the next exact command to run."#,
         },
         HostActionTemplate {
             slug: "ctx-pack",
-            description: "Build a compact CTX context pack for a task",
+            description: "Context | Build a compact CTX task context pack",
             body: r#"Build a compact CTX context pack for this task:
 
 $ARGUMENTS
@@ -501,7 +560,7 @@ Show the compact context first, then explain how it should guide the next step."
         },
         HostActionTemplate {
             slug: "ctx-retrieve",
-            description: "Search CTX retrieval results for a query",
+            description: "Context | Search CTX retrieval results for a query",
             body: r#"Use CTX retrieval for this query:
 
 $ARGUMENTS
@@ -511,7 +570,7 @@ Show the ranked hits and explain which files or symbols matter most."#,
         },
         HostActionTemplate {
             slug: "ctx-graph-query",
-            description: "Query the CTX graph for symbols and relationships",
+            description: "Context | Query the CTX graph for files and symbols",
             body: r#"Query the CTX graph for:
 
 $ARGUMENTS
@@ -521,7 +580,7 @@ Show the graph matches and explain the most relevant relationships."#,
         },
         HostActionTemplate {
             slug: "ctx-prune-logs",
-            description: "Run a command and prune noisy logs with CTX",
+            description: "Debug | Prune noisy logs and keep root-cause signal",
             body: r#"Prune noisy logs with CTX.
 
 Arguments:
@@ -532,7 +591,7 @@ Then show the pruned output and explain the highest-signal root cause lines."#,
         },
         HostActionTemplate {
             slug: "ctx-prune-diff",
-            description: "Prune the current git diff for a query",
+            description: "Debug | Prune the current git diff for a task",
             body: r#"Prune the current git diff with CTX.
 
 Arguments:
@@ -543,7 +602,7 @@ Then show the compact diff and explain why the remaining hunks matter."#,
         },
         HostActionTemplate {
             slug: "ctx-ask",
-            description: "Build compact CTX context without another agent",
+            description: "Context | Build compact CTX context without another agent",
             body: r#"Build compact CTX context for this task without invoking another agent.
 
 Arguments:
@@ -554,7 +613,7 @@ Then show the result and explain how it should guide the next step."#,
         },
         HostActionTemplate {
             slug: "ctx-hook",
-            description: "Generate a CTX hook/pre-prompt payload",
+            description: "Debug | Generate a CTX hook or pre-prompt payload",
             body: r#"Generate a CTX hook payload for this task.
 
 Arguments:
@@ -565,7 +624,7 @@ Then show the generated payload and explain where it should be used."#,
         },
         HostActionTemplate {
             slug: "ctx-explain",
-            description: "Explain likely intent and relevant context",
+            description: "Context | Explain likely intent and relevant context",
             body: r#"Explain likely CTX intent and likely context for this task.
 
 Arguments:
@@ -576,7 +635,7 @@ Then show the result and summarize the intent classification."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-set",
-            description: "Create or update a CTX memory directive",
+            description: "Memory | Create or update a CTX memory directive",
             body: r#"Create or update a CTX memory directive in the current repository.
 
 Arguments:
@@ -590,7 +649,7 @@ Then confirm what was stored and show the exact command used."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-get",
-            description: "Read one CTX memory directive by key",
+            description: "Memory | Read one CTX memory directive by key",
             body: r#"Read a CTX memory directive from the current repository.
 
 Argument:
@@ -601,7 +660,7 @@ If the directive is missing, say that clearly and suggest the matching CTX memor
         },
         HostActionTemplate {
             slug: "ctx-memory-list",
-            description: "List CTX memory directives for this repo",
+            description: "Memory | List CTX memory directives for this repository",
             body: r#"List CTX memory directives in the current repository.
 
 Arguments:
@@ -613,7 +672,7 @@ Show the directives first, then summarize any patterns you notice."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-search",
-            description: "Search CTX memory directives by topic",
+            description: "Memory | Search CTX memory directives by topic",
             body: r#"Search CTX graph memory for a specific topic.
 
 Arguments:
@@ -626,7 +685,7 @@ Show only the relevant directives and explain why they matter for the task."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-delete",
-            description: "Delete one CTX memory directive by key",
+            description: "Memory | Delete one CTX memory directive by key",
             body: r#"Delete a CTX memory directive from the current repository.
 
 Argument:
@@ -637,7 +696,7 @@ Then confirm whether the directive was deleted or not found."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-import",
-            description: "Import AGENTS.md style guidance into CTX memory",
+            description: "Memory | Import AGENTS-style guidance into CTX memory",
             body: r#"Import markdown guidance into CTX graph memory.
 
 Arguments:
@@ -651,7 +710,7 @@ Then report how many directives were imported and from which file."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-bootstrap",
-            description: "Bootstrap graph memory from AGENTS-style markdown",
+            description: "Memory | Bootstrap graph memory from AGENTS-style markdown",
             body: r#"Bootstrap CTX graph memory from conventional markdown rule files.
 
 Arguments:
@@ -667,7 +726,7 @@ Then show how many files and directives were imported."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-export",
-            description: "Export CTX memory directives to markdown",
+            description: "Memory | Export CTX memory directives to markdown",
             body: r#"Export CTX graph memory to a markdown file.
 
 Arguments:
@@ -681,7 +740,7 @@ Then confirm the output file path and the number of exported directives."#,
         },
         HostActionTemplate {
             slug: "ctx-benchmark-memory-ab",
-            description: "Compare markdown memory vs CTX graph memory",
+            description: "Benchmark | Compare markdown memory vs CTX graph memory",
             body: r#"Run the CTX memory A/B benchmark in the current repository.
 
 Arguments:
@@ -697,7 +756,7 @@ Then explain the token delta and which side won on quality if that data is prese
         },
         HostActionTemplate {
             slug: "ctx-benchmark-memory-suite",
-            description: "Run a reusable CTX memory benchmark suite",
+            description: "Benchmark | Run a reusable CTX memory benchmark suite",
             body: r#"Run the CTX memory benchmark suite in the current repository.
 
 Arguments:
@@ -713,7 +772,7 @@ Then summarize the suite KPIs and point to the generated report files."#,
         },
         HostActionTemplate {
             slug: "ctx-stats",
-            description: "Show the latest CTX token and runtime stats",
+            description: "Benchmark | Show the latest CTX token and runtime stats",
             body: r#"Show the latest local CTX stats for this repository.
 
 !`ctx stats`
@@ -722,7 +781,7 @@ Explain the last run briefly, including token reduction and any recorded runtime
         },
         HostActionTemplate {
             slug: "ctx-opencode-install",
-            description: "Refresh CTX integration files for OpenCode",
+            description: "Setup | Refresh CTX integration files for OpenCode",
             body: r#"Refresh the current repository's OpenCode integration.
 
 Run `ctx opencode install`.
@@ -730,7 +789,7 @@ Then show the output and summarize which files were written or updated."#,
         },
         HostActionTemplate {
             slug: "ctx-mcp-serve",
-            description: "Show or start the CTX MCP HTTP server",
+            description: "MCP | Show or start the CTX MCP HTTP server",
             body: r#"Prepare the CTX MCP HTTP server for this repository.
 
 Arguments:
@@ -741,14 +800,14 @@ Otherwise, show the exact command to run and explain that it is a long-running l
         },
         HostActionTemplate {
             slug: "ctx-mcp-stdio",
-            description: "Show the CTX MCP stdio launch command",
+            description: "MCP | Show the CTX MCP stdio launch command",
             body: r#"Show the CTX MCP stdio launch command for the current repository.
 
 Use the current repository root and explain how a host CLI can launch `ctx --repo-root <repo> mcp stdio` locally."#,
         },
         HostActionTemplate {
             slug: "ctx-mcp-config-claude",
-            description: "Generate CTX MCP config for Claude Code",
+            description: "MCP | Generate CTX MCP config for Claude Code",
             body: r#"Generate the CTX MCP config snippet for Claude Code.
 
 Run `ctx mcp config claude`.
@@ -756,7 +815,7 @@ Then show the output and explain how to use it."#,
         },
         HostActionTemplate {
             slug: "ctx-mcp-config-opencode",
-            description: "Generate CTX MCP config for OpenCode",
+            description: "MCP | Generate CTX MCP config for OpenCode",
             body: r#"Generate the CTX MCP config snippet for OpenCode.
 
 Run `ctx mcp config opencode`.

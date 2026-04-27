@@ -1,0 +1,13 @@
+[12:00:00] restoring cache...
+[12:00:01] installing dependencies...
+[12:00:10] running vitest...
+ RUN  v3.2.0 /demo/fixtures/opencode-auth-lab
+ ✓ tests/auth/session.test.ts (1)
+ stdout | tests/auth/refresh-route.test.ts > refresh route > rotates refresh tokens
+ debug: issuing refresh token for user-1
+ debug: audit event refresh:user-1
+ × tests/auth/refresh-route.test.ts > refresh route > rotates refresh tokens 14ms
+   → AssertionError: expected token:refresh:user-1 to contain rotated:user-1
+   → tests/auth/refresh-route.test.ts:7:19
+[12:00:14] uploading coverage...
+[12:00:15] done.

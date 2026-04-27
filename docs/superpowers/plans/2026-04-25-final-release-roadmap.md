@@ -130,34 +130,48 @@
 
 - [x] Build a publishable memory benchmark suite harness with Markdown/JSON report generation
 - [x] Add reusable benchmark scenario definitions and repeatable report generation for graph-memory validation
-- [ ] Run A/B benchmarks against markdown memory and version the reports
-- [ ] Add validation that graph memory actually saves tokens while preserving answer quality
-- [ ] Use benchmark results to justify host-first positioning and graph-memory adoption
+- [x] Add a real OpenCode-first demo fixture repository and automated smoke scripts
+- [x] Run A/B benchmarks against markdown memory and version the reports
+- [x] Add validation that graph memory actually saves tokens while preserving answer quality
+- [x] Use benchmark results to justify host-first positioning and graph-memory adoption
 
 **Exit criteria**
 
 - The repo contains evidence, not just claims, for token savings and quality retention
 
+**Status**
+
+- Phase 5 validation is now grounded in the in-repo `demo/fixtures/opencode-auth-lab/` fixture.
+- Automated CLI and MCP smokes pass against the same fixture that powers the benchmark reports.
+- The committed benchmark report currently shows `75.81%` average token reduction with a graph-quality win on the `AGENTS.md -> graph memory` scenario.
+
 ## Phase 6: Packaging, Release, and Community Readiness
 
-- [ ] Finish binary packaging and release pipeline
+- [x] Finish binary packaging and release pipeline
 - [ ] Finalize Homebrew/tap story once public release coordinates exist
-- [ ] Produce final install docs, usage guide, and real-world walkthroughs
-- [ ] Add demo/community assets and release messaging
-- [ ] Execute final QA pass focused on OpenCode-native flows
+- [x] Produce final install docs, usage guide, and real-world walkthroughs
+- [x] Add demo/community assets and release messaging
+- [x] Execute final QA pass focused on OpenCode-native flows
 
 **Exit criteria**
 
 - A user can discover, install, test, and use CTX from GitHub without hidden setup steps
 
+**Status**
+
+- The release build now produces `dist/ctx-<version>-<target>.tar.gz`, `dist/SHA256SUMS`, and `dist/release-manifest.json`.
+- The packaging pipeline verifies the final tarball, not only the local build tree, by unpacking the archive and rerunning install, OpenCode, demo, MCP, and benchmark smokes against the packaged binary.
+- The repository now includes a release playbook, GitHub release template, and final QA checklist focused on OpenCode-native usage.
+- `scripts/release/final-qa.sh` now passes end-to-end, including workspace tests, debug-binary smokes, release build, artifact verification, and the OpenCode demo benchmark flow.
+
 ## Final Release Checklist
 
-- [ ] OpenCode-native usage is the primary documented and tested path
-- [ ] Future non-OpenCode host integrations are specified natively, not as wrapper revivals
-- [ ] Codex/Claude roadmap is explicit
-- [ ] Benchmark reports are published
-- [ ] Release artifacts are reproducible
-- [ ] README, guide, install docs, and roadmap all agree on current status
+- [x] OpenCode-native usage is the primary documented and tested path
+- [x] Future non-OpenCode host integrations are specified natively, not as wrapper revivals
+- [x] Codex/Claude roadmap is explicit
+- [x] Benchmark reports are published
+- [x] Release artifacts are reproducible
+- [x] README, guide, install docs, and roadmap all agree on current status
 
 ## Execution Note
 

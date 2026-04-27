@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "docs/guidelines.md",
+    "docs/security.md",
+    ".opencode/instructions/ctx-host-first.md"
+  ],
+  "mcp": {
+    "ctx": {
+      "command": [
+        "ctx",
+        "--repo-root",
+        "/Users/alessandrogautieri/Documents/coding/ctx/demo/fixtures/opencode-auth-lab",
+        "mcp",
+        "stdio"
+      ],
+      "enabled": true,
+      "type": "local"
+    }
+  }
+}

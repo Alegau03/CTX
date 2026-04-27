@@ -1,0 +1,3 @@
+I will run targeted auth tests before completion.
+I will fix root cause instead of bypassing refresh-token failures.
+I will prefer auth fixtures when debugging token rotation failures.

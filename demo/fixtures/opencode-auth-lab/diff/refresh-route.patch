@@ -1,0 +1,14 @@
+diff --git a/src/auth/session.ts b/src/auth/session.ts
+index 1111111..2222222 100644
+--- a/src/auth/session.ts
++++ b/src/auth/session.ts
+@@ -1,7 +1,7 @@
+ import { appendAuditEvent } from "./audit";
+ import { rotateRefreshToken, tokenLabel } from "./tokens";
+ 
+ export function refreshSession(userId: string): string {
+-  const token = rotateRefreshToken(userId);
++  const token = `rotated:${userId}`;
+   appendAuditEvent("refresh", userId);
+   return tokenLabel(token);
+ }

@@ -190,7 +190,10 @@ Release output:
 ```text
 dist/ctx-<version>-<target>.tar.gz
 dist/SHA256SUMS
+dist/release-manifest.json
 ```
+
+The build pipeline now also verifies the packaged archive end-to-end before finishing.
 
 ## Install Smoke Test
 
@@ -224,6 +227,57 @@ What it verifies:
 - generated `.opencode/commands/` command files
 - generated `.opencode/instructions/ctx-host-first.md`
 - host-first rules still deprecate wrapper-style workflows
+
+Demo fixture validation:
+
+```bash
+scripts/demo/opencode-auth-lab-smoke.sh ./target/release/ctx
+scripts/demo/opencode-auth-lab-mcp-smoke.sh ./target/release/ctx
+scripts/demo/opencode-auth-lab-benchmark.sh ./target/release/ctx
+```
+
+These scripts validate the real in-repo fixture at `demo/fixtures/opencode-auth-lab`.
+
+## Release Artifact Verification
+
+Verify a packaged release archive after build or download:
+
+```bash
+scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.tar.gz dist/SHA256SUMS
+```
+
+What it verifies:
+
+- archive checksum matches `SHA256SUMS`
+- the packaged `ctx` binary can pass `install-smoke.sh`
+- the packaged `ctx` binary can pass `opencode-smoke.sh`
+- the packaged `ctx` binary can pass the demo fixture smoke, MCP smoke, and benchmark script
+
+The release manifest written by the build pipeline is:
+
+```text
+dist/release-manifest.json
+```
+
+It records the archive name, target, SHA-256, and links back to the demo benchmark reports that justify the release claims.
+
+## Final QA
+
+Run the full release gate before publishing:
+
+```bash
+scripts/release/final-qa.sh
+```
+
+What it does:
+
+- checks formatting
+- runs the full Rust test suite
+- builds the release archive
+- verifies the packaged tarball with `verify-artifact.sh`
+- reruns the install, OpenCode, demo, MCP, and benchmark validations against the packaged binary
+
+For the human-readable manual checklist, see [docs/final-qa.md](final-qa.md).
 
 ## Troubleshooting
 

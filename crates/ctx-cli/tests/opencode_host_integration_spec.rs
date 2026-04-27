@@ -77,6 +77,7 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
     let commands_dir = tmp.path().join(".opencode/commands");
 
     for command in [
+        "ctx.md",
         "ctx-help.md",
         "ctx-init.md",
         "ctx-index.md",
@@ -133,8 +134,15 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     let command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-pack.md"))
         .expect("ctx-pack command");
     assert!(command.contains("description:"));
+    assert!(command.contains("Context |"));
     assert!(!command.contains("\nagent:"));
     assert!(!command.contains("\nmodel:"));
+
+    let menu =
+        fs::read_to_string(tmp.path().join(".opencode/commands/ctx.md")).expect("ctx menu command");
+    assert!(menu.contains("CTX Command Center"));
+    assert!(menu.contains("Recommended Start"));
+    assert!(menu.contains("/ctx-memory-bootstrap"));
 
     let instructions =
         fs::read_to_string(tmp.path().join(".opencode/instructions/ctx-host-first.md"))

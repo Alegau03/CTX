@@ -10,6 +10,10 @@ It covers:
 - the command reference
 - validation and expected behavior
 
+The reference demo repository used throughout this guide is:
+
+- `demo/fixtures/opencode-auth-lab`
+
 ## 1. Recommended Order In A Real Repository
 
 Use CTX in this order:
@@ -40,6 +44,14 @@ Expected result:
 - `opencode.json` exists or is merged
 - `.opencode/commands/` exists
 - `.opencode/instructions/ctx-host-first.md` exists
+
+If you want a ready-made validation target, use the fixture repo directly:
+
+```bash
+ctx --repo-root demo/fixtures/opencode-auth-lab init
+ctx --repo-root demo/fixtures/opencode-auth-lab index
+ctx --repo-root demo/fixtures/opencode-auth-lab opencode install
+```
 
 ## 2. OpenCode-First Workflow
 
@@ -91,6 +103,7 @@ What happens:
 After `ctx opencode install`, open `opencode` and start with:
 
 ```text
+/ctx
 /ctx-doctor
 /ctx-memory-bootstrap
 /ctx-memory-search tests
@@ -100,6 +113,7 @@ After `ctx opencode install`, open `opencode` and start with:
 
 What each one should do:
 
+- `/ctx`: open the CTX command center with categories, examples, and the best next step
 - `/ctx-doctor`: confirm CTX is ready in the repo
 - `/ctx-memory-bootstrap`: import project rules from classic markdown files into graph memory
 - `/ctx-memory-search tests`: retrieve only directives relevant to testing
@@ -352,6 +366,7 @@ ctx benchmark memory-suite \
 
 Use these after `ctx opencode install` inside OpenCode:
 
+- `/ctx`
 - `/ctx-doctor`
 - `/ctx-pack`
 - `/ctx-retrieve`
@@ -472,3 +487,10 @@ Use raw CLI commands outside OpenCode mainly for:
 - CI or smoke flows
 - manual debugging of CTX itself
 - benchmark/report generation
+
+See also:
+
+- [docs/demo-walkthrough.md](docs/demo-walkthrough.md)
+- [docs/demo-script.md](docs/demo-script.md)
+- [docs/final-qa.md](docs/final-qa.md)
+- [docs/release-playbook.md](docs/release-playbook.md)
