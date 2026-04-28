@@ -108,7 +108,7 @@ impl Default for GeneralConfig {
         Self {
             repo_root: ".".to_string(),
             default_budget: 6000,
-            agent: "codex".to_string(),
+            agent: "opencode".to_string(),
         }
     }
 }

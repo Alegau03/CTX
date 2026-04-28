@@ -3,31 +3,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Map, Value, json};
-use toml::Value as TomlValue;
-
-#[derive(Clone, Copy, Debug)]
-pub enum HostInstallTarget {
-    OpenCode,
-    Codex,
-    Claude,
-}
-
-impl HostInstallTarget {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::OpenCode => "OpenCode",
-            Self::Codex => "Codex",
-            Self::Claude => "Claude Code",
-        }
-    }
-}
 
 pub fn render_mcp_config(repo_root: &Path, client: &str, port: u16) -> Result<String> {
     match client.to_ascii_lowercase().as_str() {
-        "claude" | "claude-code" => Ok(serde_json::to_string_pretty(&claude_mcp_config_value(
-            repo_root,
-        ))?),
-        "codex" => Ok(render_codex_mcp_config(repo_root)?),
         "opencode" | "open-code" => Ok(serde_json::to_string_pretty(
             &opencode_project_config_value(repo_root),
         )?),
@@ -39,20 +17,12 @@ pub fn render_mcp_config(repo_root: &Path, client: &str, port: u16) -> Result<St
             "repo_root": repo_root.to_string_lossy()
         }))?),
         other => Err(anyhow!(
-            "unknown MCP config client '{other}'. Expected: claude, codex, opencode, or http"
+            "unknown MCP config client '{other}'. Expected: opencode or http"
         )),
     }
 }
 
-pub fn install_host_integration(repo_root: &Path, target: HostInstallTarget) -> Result<Value> {
-    match target {
-        HostInstallTarget::OpenCode => install_opencode_integration(repo_root),
-        HostInstallTarget::Codex => install_codex_integration(repo_root),
-        HostInstallTarget::Claude => install_claude_integration(repo_root),
-    }
-}
-
-fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
+pub fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
     let config_path = upsert_opencode_project_config(repo_root)?;
     let commands_dir = repo_root.join(".opencode/commands");
     write_markdown_assets(
@@ -76,7 +46,7 @@ fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
 
     Ok(json!({
         "host": "opencode",
-        "display_name": HostInstallTarget::OpenCode.name(),
+        "display_name": "OpenCode",
         "config_path": config_path.display().to_string(),
         "commands_dir": commands_dir.display().to_string(),
         "instructions_dir": instructions_dir.display().to_string(),
@@ -84,48 +54,6 @@ fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
         "command_files": command_paths,
         "instruction_files": instruction_paths,
         "next_step": "open this repo in OpenCode and run /ctx-doctor or /ctx-pack <task>"
-    }))
-}
-
-fn install_codex_integration(repo_root: &Path) -> Result<Value> {
-    let config_path = upsert_codex_project_config(repo_root)?;
-    let skills_dir = repo_root.join(".agents/skills");
-    write_skill_assets(
-        &skills_dir,
-        shared_action_templates(),
-        HostInstallTarget::Codex,
-    )?;
-
-    let skill_paths = asset_skill_paths(&skills_dir, shared_action_templates());
-    Ok(json!({
-        "host": "codex",
-        "display_name": HostInstallTarget::Codex.name(),
-        "config_path": config_path.display().to_string(),
-        "skills_dir": skills_dir.display().to_string(),
-        "skills_written": skill_paths.len(),
-        "skill_files": skill_paths,
-        "next_step": "open this repo in Codex and invoke $ctx-doctor or $ctx-pack for explicit CTX workflows"
-    }))
-}
-
-fn install_claude_integration(repo_root: &Path) -> Result<Value> {
-    let config_path = upsert_claude_project_config(repo_root)?;
-    let skills_dir = repo_root.join(".claude/skills");
-    write_skill_assets(
-        &skills_dir,
-        shared_action_templates(),
-        HostInstallTarget::Claude,
-    )?;
-
-    let skill_paths = asset_skill_paths(&skills_dir, shared_action_templates());
-    Ok(json!({
-        "host": "claude",
-        "display_name": HostInstallTarget::Claude.name(),
-        "config_path": config_path.display().to_string(),
-        "skills_dir": skills_dir.display().to_string(),
-        "skills_written": skill_paths.len(),
-        "skill_files": skill_paths,
-        "next_step": "open this repo in Claude Code and run /ctx-doctor or /ctx-pack <task>"
     }))
 }
 
@@ -179,82 +107,6 @@ fn upsert_opencode_project_config(repo_root: &Path) -> Result<PathBuf> {
     Ok(config_path)
 }
 
-fn upsert_codex_project_config(repo_root: &Path) -> Result<PathBuf> {
-    let codex_dir = repo_root.join(".codex");
-    fs::create_dir_all(&codex_dir)
-        .with_context(|| format!("failed to create {}", codex_dir.display()))?;
-    let config_path = codex_dir.join("config.toml");
-    let mut root = if config_path.is_file() {
-        let raw = fs::read_to_string(&config_path)
-            .with_context(|| format!("failed to read {}", config_path.display()))?;
-        raw.parse::<TomlValue>()
-            .with_context(|| format!("failed to parse {}", config_path.display()))?
-    } else {
-        TomlValue::Table(Default::default())
-    };
-
-    let root_table = root.as_table_mut().ok_or_else(|| {
-        anyhow!(
-            "{} must contain a top-level TOML table",
-            config_path.display()
-        )
-    })?;
-    let mcp_servers = ensure_toml_table(root_table, "mcp_servers")?;
-    mcp_servers.insert("ctx".to_string(), codex_ctx_mcp_server_value(repo_root));
-
-    fs::write(&config_path, toml::to_string_pretty(&root)?)
-        .with_context(|| format!("failed to write {}", config_path.display()))?;
-    Ok(config_path)
-}
-
-fn upsert_claude_project_config(repo_root: &Path) -> Result<PathBuf> {
-    let config_path = repo_root.join(".mcp.json");
-    let mut root = if config_path.is_file() {
-        let raw = fs::read_to_string(&config_path)
-            .with_context(|| format!("failed to read {}", config_path.display()))?;
-        serde_json::from_str::<Value>(&raw)
-            .with_context(|| format!("failed to parse {}", config_path.display()))?
-    } else {
-        json!({})
-    };
-
-    let object = root.as_object_mut().ok_or_else(|| {
-        anyhow!(
-            "{} must contain a top-level JSON object",
-            config_path.display()
-        )
-    })?;
-    let servers = object
-        .entry("mcpServers".to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
-    let servers_object = servers.as_object_mut().ok_or_else(|| {
-        anyhow!(
-            "{} field 'mcpServers' must be a JSON object",
-            config_path.display()
-        )
-    })?;
-    servers_object.insert("ctx".to_string(), claude_ctx_mcp_server_value(repo_root));
-
-    fs::write(
-        &config_path,
-        format!("{}\n", serde_json::to_string_pretty(&root)?),
-    )
-    .with_context(|| format!("failed to write {}", config_path.display()))?;
-    Ok(config_path)
-}
-
-fn ensure_toml_table<'a>(
-    root: &'a mut toml::map::Map<String, TomlValue>,
-    key: &str,
-) -> Result<&'a mut toml::map::Map<String, TomlValue>> {
-    let entry = root
-        .entry(key.to_string())
-        .or_insert_with(|| TomlValue::Table(Default::default()));
-    entry
-        .as_table_mut()
-        .ok_or_else(|| anyhow!("TOML field '{key}' must be a table"))
-}
-
 fn write_markdown_assets(
     root: &Path,
     templates: &[HostActionTemplate],
@@ -269,22 +121,6 @@ fn write_markdown_assets(
     Ok(())
 }
 
-fn write_skill_assets(
-    root: &Path,
-    templates: &[HostActionTemplate],
-    target: HostInstallTarget,
-) -> Result<()> {
-    fs::create_dir_all(root).with_context(|| format!("failed to create {}", root.display()))?;
-    for template in templates {
-        let dir = root.join(template.slug);
-        fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
-        let path = dir.join("SKILL.md");
-        fs::write(&path, render_skill_file(target, template))
-            .with_context(|| format!("failed to write {}", path.display()))?;
-    }
-    Ok(())
-}
-
 fn asset_file_paths(root: &Path, templates: &[HostActionTemplate], extension: &str) -> Vec<String> {
     templates
         .iter()
@@ -293,38 +129,8 @@ fn asset_file_paths(root: &Path, templates: &[HostActionTemplate], extension: &s
         .collect()
 }
 
-fn asset_skill_paths(root: &Path, templates: &[HostActionTemplate]) -> Vec<String> {
-    templates
-        .iter()
-        .map(|template| root.join(template.slug).join("SKILL.md"))
-        .map(|path| path.display().to_string())
-        .collect()
-}
-
 fn render_opencode_command_file(description: &str, template: &str) -> String {
     format!("---\ndescription: {description}\n---\n\n{template}\n")
-}
-
-fn render_skill_file(target: HostInstallTarget, template: &HostActionTemplate) -> String {
-    let invocation = match target {
-        HostInstallTarget::Codex => format!(
-            "Invoke this skill explicitly with `${}` inside Codex when you want CTX help for this workflow.",
-            template.slug
-        ),
-        HostInstallTarget::Claude => format!(
-            "Invoke this skill explicitly with `/{}` inside Claude Code when you want CTX help for this workflow.",
-            template.slug
-        ),
-        HostInstallTarget::OpenCode => String::new(),
-    };
-
-    format!(
-        "---\nname: {name}\ndescription: {description}\n---\n\n{invocation}\n\n{body}\n",
-        name = template.slug,
-        description = template.description,
-        invocation = invocation,
-        body = template.body,
-    )
 }
 
 fn merge_instruction_entries(root: &mut Map<String, Value>, entries: &[&str]) -> Result<()> {
@@ -369,50 +175,6 @@ fn opencode_ctx_mcp_server_value(repo_root: &Path) -> Value {
             "stdio"
         ]
     })
-}
-
-fn claude_mcp_config_value(repo_root: &Path) -> Value {
-    json!({
-        "mcpServers": {
-            "ctx": claude_ctx_mcp_server_value(repo_root)
-        }
-    })
-}
-
-fn claude_ctx_mcp_server_value(repo_root: &Path) -> Value {
-    json!({
-        "command": "ctx",
-        "args": [
-            "--repo-root",
-            repo_root.to_string_lossy(),
-            "mcp",
-            "stdio"
-        ]
-    })
-}
-
-fn render_codex_mcp_config(repo_root: &Path) -> Result<String> {
-    let value = codex_ctx_mcp_server_value(repo_root);
-    let rendered = toml::to_string_pretty(&TomlValue::Table(toml::map::Map::from_iter([(
-        "mcp_servers".to_string(),
-        TomlValue::Table(toml::map::Map::from_iter([("ctx".to_string(), value)])),
-    )])))?;
-    Ok(rendered)
-}
-
-fn codex_ctx_mcp_server_value(repo_root: &Path) -> TomlValue {
-    let mut table = toml::map::Map::new();
-    table.insert("command".to_string(), TomlValue::String("ctx".to_string()));
-    table.insert(
-        "args".to_string(),
-        TomlValue::Array(vec![
-            TomlValue::String("--repo-root".to_string()),
-            TomlValue::String(repo_root.to_string_lossy().to_string()),
-            TomlValue::String("mcp".to_string()),
-            TomlValue::String("stdio".to_string()),
-        ]),
-    );
-    TomlValue::Table(table)
 }
 
 #[derive(Clone, Copy)]
@@ -718,8 +480,6 @@ Arguments:
 
 If no arguments are provided, run `ctx memory bootstrap` so CTX scans common files such as:
 - `AGENTS.md`
-- `CLAUDE.md`
-- `CODEX.md`
 - `.github/copilot-instructions.md`
 
 Then show how many files and directives were imported."#,
@@ -806,14 +566,6 @@ Otherwise, show the exact command to run and explain that it is a long-running l
 Use the current repository root and explain how a host CLI can launch `ctx --repo-root <repo> mcp stdio` locally."#,
         },
         HostActionTemplate {
-            slug: "ctx-mcp-config-claude",
-            description: "MCP | Generate CTX MCP config for Claude Code",
-            body: r#"Generate the CTX MCP config snippet for Claude Code.
-
-Run `ctx mcp config claude`.
-Then show the output and explain how to use it."#,
-        },
-        HostActionTemplate {
             slug: "ctx-mcp-config-opencode",
             description: "MCP | Generate CTX MCP config for OpenCode",
             body: r#"Generate the CTX MCP config snippet for OpenCode.
@@ -836,7 +588,7 @@ CTX is the local context runtime for this repository.
 - Stay inside OpenCode for normal work.
 - Prefer CTX slash commands and CTX MCP tools before broad file dumping.
 - Keep the current OpenCode-selected model and agent in control.
-- Do not revive wrapper-style workflows like `ctx wrap`, `ctx codex`, `ctx claude`, or `ctx opencode run`.
+- Do not revive wrapper-style workflows like `ctx wrap` or `ctx opencode run`.
 
 ## Automatic CTX Usage
 

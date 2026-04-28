@@ -14,7 +14,7 @@ use ctx_hooks::apply_pre_prompt_hook;
 use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
 mod host_integration;
 
-use host_integration::{HostInstallTarget, install_host_integration, render_mcp_config};
+use host_integration::{install_opencode_integration, render_mcp_config};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -72,14 +72,6 @@ enum Commands {
         query: String,
         #[arg(long, default_value_t = 8)]
         limit: usize,
-    },
-    Codex {
-        #[command(subcommand)]
-        command: HostInstallCommands,
-    },
-    Claude {
-        #[command(subcommand)]
-        command: HostInstallCommands,
     },
     Opencode {
         #[command(subcommand)]
@@ -207,7 +199,7 @@ struct McpServeArgs {
 
 #[derive(Debug, Args)]
 struct McpConfigArgs {
-    #[arg(default_value = "claude")]
+    #[arg(default_value = "opencode")]
     client: String,
 
     #[arg(long)]
@@ -382,28 +374,9 @@ fn run() -> Result<()> {
                 }
             }
         }
-        Commands::Codex { command } => match command {
-            HostInstallCommands::Install => {
-                print_host_install_report(
-                    install_host_integration(&repo_root, HostInstallTarget::Codex)?,
-                    cli.json,
-                )?;
-            }
-        },
-        Commands::Claude { command } => match command {
-            HostInstallCommands::Install => {
-                print_host_install_report(
-                    install_host_integration(&repo_root, HostInstallTarget::Claude)?,
-                    cli.json,
-                )?;
-            }
-        },
         Commands::Opencode { command } => match command {
             HostInstallCommands::Install => {
-                print_host_install_report(
-                    install_host_integration(&repo_root, HostInstallTarget::OpenCode)?,
-                    cli.json,
-                )?;
+                print_host_install_report(install_opencode_integration(&repo_root)?, cli.json)?;
             }
         },
         Commands::Mcp { command } => match command {
@@ -835,75 +808,66 @@ Example: ctx retrieve "refresh token auth failure" --limit 5
 What it does: Primary OpenCode bootstrap. Writes `opencode.json` and `.opencode/commands/*.md` for host-native CTX usage.
 Example: ctx opencode install
 
-15) ctx codex install
-What it does: Writes project-local Codex MCP config and CTX skills so CTX can be used inside Codex without wrapper-style daily commands.
-Example: ctx codex install
-
-16) ctx claude install
-What it does: Writes project-local Claude Code MCP config and CTX skills so CTX can be used inside Claude Code through native skills.
-Example: ctx claude install
-
-17) ctx mcp serve [--port p] [--once]
+15) ctx mcp serve [--port p] [--once]
 What it does: Starts local MCP-compatible RPC server on localhost.
 Example: ctx mcp serve --port 8765
 Example: ctx mcp serve --port 8765 --once
 
-18) ctx mcp stdio
+16) ctx mcp stdio
 What it does: Runs MCP JSON-RPC over stdin/stdout for clients that launch local MCP commands.
 Example: ctx --repo-root /path/to/project mcp stdio
 
-19) ctx mcp config <client>
-What it does: Prints an MCP configuration snippet for a supported host client.
-Example: ctx mcp config claude
-Example: ctx mcp config codex
+17) ctx mcp config <client>
+What it does: Prints an MCP configuration snippet for OpenCode or a generic HTTP JSON-RPC client.
 Example: ctx mcp config opencode
+Example: ctx mcp config http
 
-20) ctx memory set <key> <body> [--scope s] [--source src]
+18) ctx memory set <key> <body> [--scope s] [--source src]
 What it does: Upserts a graph-backed memory directive replacing markdown habit files.
 Example: ctx memory set testing.always_run "Run targeted tests before completion" --scope project --source manual
 
-21) ctx memory get <key>
+19) ctx memory get <key>
 What it does: Reads one memory directive from graph memory.
 Example: ctx memory get testing.always_run
 
-22) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
-What it does: Imports markdown habit files (AGENTS/CLAUDE/CODEX) into graph memory directives.
+20) ctx memory import --from <file> [--scope s] [--source src] [--prefix p]
+What it does: Imports markdown habit files into graph memory directives.
 Example: ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
 
-23) ctx memory bootstrap [paths...] [--scope s] [--source src]
-What it does: Auto-imports conventional markdown rule files like `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
+21) ctx memory bootstrap [paths...] [--scope s] [--source src]
+What it does: Auto-imports conventional markdown rule files like `AGENTS.md` and `.github/copilot-instructions.md`.
 Example: ctx memory bootstrap
 Example: ctx memory bootstrap AGENTS.md .github/copilot-instructions.md
 
-24) ctx memory export --to <file> [--scope s] [--limit n]
+22) ctx memory export --to <file> [--scope s] [--limit n]
 What it does: Exports graph memory directives back to markdown for compatibility or auditing.
 Example: ctx memory export --to AGENTS.generated.md --scope project --limit 200
 
-25) ctx memory search <query> [--scope s] [--limit n]
+23) ctx memory search <query> [--scope s] [--limit n]
 What it does: Searches graph memory by topic so you can inspect only the relevant directives.
 Example: ctx memory search "auth tests root cause" --scope project --limit 10
 
-26) ctx memory list [--scope s] [--limit n]
+24) ctx memory list [--scope s] [--limit n]
 What it does: Lists recent memory directives (optionally filtered by scope).
 Example: ctx memory list --scope project --limit 10
 
-27) ctx memory delete <key>
+25) ctx memory delete <key>
 What it does: Deletes one memory directive from graph memory.
 Example: ctx memory delete testing.always_run
 
-28) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
+26) ctx benchmark memory-ab <query> --markdown <file> [--limit n]
 What it does: Compares graph memory directives vs markdown rules on token cost, query coverage and optional quality/success via checklist + answer files.
 Example: ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENTS.md --limit 20
 
-29) ctx benchmark memory-suite --spec <file> --report-out <file> [--json-out <file>]
+27) ctx benchmark memory-suite --spec <file> --report-out <file> [--json-out <file>]
 What it does: Runs a reusable benchmark suite from a spec file and writes publishable markdown/JSON reports.
 Example: ctx benchmark memory-suite --spec benchmarks/memory-ab.example.toml --report-out benchmarks/report.md --json-out benchmarks/report.json
 
-30) ctx stats
+28) ctx stats
 What it does: Prints latest local telemetry snapshot, including token reduction and runtime metadata.
 Example: ctx stats
 
-31) ctx doctor
+29) ctx doctor
 What it does: Checks first-run/install readiness: config, graph, local stats, audit log, and privacy defaults.
 Example: ctx doctor
 
@@ -911,6 +875,6 @@ Global options:
 --repo-root <path>  Use a specific repository root
 --budget <n>        Override context token budget
 --json              Print JSON output when supported
---attach <file>     Attach diagnostic input file (used by pack/adapters)
+--attach <file>     Attach diagnostic input file (used by pack)
 "#
 }

@@ -1,42 +1,49 @@
 # CTX Architecture
 
-## Product Direction
+CTX is an OpenCode-first local context runtime. It does not replace the host agent. OpenCode owns the model, provider, plugins, and normal session behavior; CTX supplies local graph memory, retrieval, pruning, packing, benchmarks, diagnostics, and MCP tools.
 
-CTX is not supposed to become a parallel agent launcher long-term.
+## Runtime Pipeline
 
-The target product shape is:
-
-- host CLI stays primary
-- CTX runs locally behind the host CLI
-- host model/provider/agent selection stays intact
-- CTX contributes graph memory, retrieval, pruning, compact context, benchmark, and diagnostics through host-native commands and tools
-
-OpenCode is the first-class host target.
-Codex and Claude Code now have native bootstrap paths built on the same local runtime.
-
-Historical wrapper-oriented plans still exist under `docs/superpowers/plans/` for implementation traceability, but they are not the current product source of truth.
-
-## Pipeline
-
-1. Intake (`ctx-intake`)
-2. Deterministic pruning (`ctx-prune`)
-3. Context packing (`ctx-pack`)
-4. Local graph enrichment (`ctx-graph`)
-5. Host integration (`ctx-cli` + `ctx-mcp` + host-native command surfaces)
-6. Local telemetry (`ctx-telemetry`)
+1. `ctx-intake`: normalize user/task intent.
+2. `ctx-prune`: compact noisy logs and diffs.
+3. `ctx-ast`: extract symbols and structural slices.
+4. `ctx-graph`: persist files, snippets, symbols, memory directives, failures, decisions, and run metadata in SQLite/FTS.
+5. `ctx-semantic`: rank relevant chunks with local fallback behavior.
+6. `ctx-pack`: assemble compact task context under a budget.
+7. `ctx-mcp`: expose local tools over stdio and localhost HTTP JSON-RPC.
+8. `ctx-cli`: provide bootstrap/runtime commands and generate OpenCode assets.
 
 ## Persistence
 
-- Config: `.ctx/config.toml`
-- Graph: `.ctx/graph.db` (SQLite + FTS tables scaffolded)
-- Stats: `.ctx/stats/latest.json`
-- Audit: `.ctx/audit.log`
+| Data | Location |
+|---|---|
+| Config | `.ctx/config.toml` |
+| Graph | `.ctx/graph.db` |
+| Packs | `.ctx/packs/` |
+| Stats | `.ctx/stats/latest.json` |
+| Audit | `.ctx/audit.log` |
+| OpenCode config | `opencode.json` |
+| OpenCode commands | `.opencode/commands/*.md` |
+| OpenCode instructions | `.opencode/instructions/ctx-host-first.md` |
 
-## Security Model
+## OpenCode Integration
 
-- Local-first execution
-- No mandatory network calls
-- MCP stdio is the preferred host integration transport
-- MCP HTTP remains localhost-oriented
-- Sensitive path filtering is already enforced
-- OpenCode integration should inherit the same local-first trust boundary
+`ctx opencode install` does three things:
+
+- registers `ctx --repo-root <repo> mcp stdio` as a local OpenCode MCP server
+- generates `/ctx-*` command files under `.opencode/commands/`
+- adds host-first instructions that tell OpenCode to prefer CTX graph/memory/retrieval before broad file dumping
+
+Generated OpenCode commands do not pin a model or agent.
+
+## Graph Memory
+
+Graph memory stores project habits as structured directives. Existing markdown files such as `AGENTS.md` and `.github/copilot-instructions.md` can seed the graph, but daily retrieval should query directives by topic instead of reinjecting full markdown files.
+
+## Security Boundary
+
+- CTX is local-first.
+- MCP stdio is the preferred host transport.
+- HTTP JSON-RPC binds to `127.0.0.1` for local debugging.
+- Sensitive attachments are blocked before packing.
+- Privacy decisions and pack summaries are recorded locally.

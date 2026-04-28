@@ -26,9 +26,9 @@ fn appends_structured_audit_event_as_json_line() {
         &audit_path,
         &AuditEvent {
             kind: "adapter_invocation".to_string(),
-            message: "ctx invoked claude".to_string(),
-            agent: Some("claude".to_string()),
-            command: Some("claude -p \"fix auth\"".to_string()),
+            message: "ctx served opencode command".to_string(),
+            agent: Some("opencode".to_string()),
+            command: Some("/ctx-pack \"fix auth\"".to_string()),
             status: Some("succeeded".to_string()),
             fallback_used: false,
             pack_path: Some(".ctx/packs/1.json".to_string()),
@@ -38,7 +38,7 @@ fn appends_structured_audit_event_as_json_line() {
 
     let body = std::fs::read_to_string(audit_path).expect("read audit");
     assert!(body.contains("adapter_invocation"));
-    assert!(body.contains("ctx invoked claude"));
+    assert!(body.contains("ctx served opencode command"));
     assert!(body.contains("\"fallback_used\":false"));
 }
 

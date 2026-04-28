@@ -2,56 +2,40 @@
 
 ## North Star
 
-CTX must behave like a local context runtime plugin that lives inside the host agent CLI, starting with OpenCode.
+CTX must feel like a local context runtime inside OpenCode, not a second agent launcher.
 
-The user experience target is:
+The target user experience is:
 
 - open `opencode`
 - stay inside `opencode`
-- use CTX features from inside the OpenCode TUI
-- keep the current OpenCode model, provider, and agent selection
-- avoid a second terminal or wrapper-centric workflow for daily usage
+- use CTX through `/ctx-*` commands and local MCP tools
+- keep the current OpenCode model, provider, plugins, and agent behavior
+- avoid a second terminal for daily CTX usage
 
 ## Product Rules
 
 - OpenCode-first is the highest-priority integration target.
-- Codex and Claude Code should follow as native host integrations, not as revived wrapper-style launchers.
-- Daily usage must happen inside the host CLI, not through removed wrapper-style public commands.
-- The public CLI should stay focused on runtime/bootstrap capabilities and host-native integration.
-- Treat wrapper-first UX as legacy, not primary.
-- The host CLI owns model/provider selection; CTX must not override it by default.
-- CTX should provide retrieval, graph memory, pruning, benchmarking, and diagnostics as host-native commands or tools.
-- Implicit usage is preferred over explicit host-side CTX commands whenever the host supports it.
+- OpenCode-native commands are the product surface.
+- Daily usage must happen inside OpenCode after bootstrap.
+- The CLI should focus on runtime setup, indexing, MCP, benchmarks, and OpenCode asset generation.
+- Treat wrapper-first UX as legacy.
+- Do not reintroduce `ctx wrap`, `ctx opencode run`, or host-launcher style commands.
+- CTX must not override host model/provider selection by default.
+- Graph memory should replace repeated full markdown rereads when possible.
 
-## OpenCode-Specific Rules
+## OpenCode Rules
 
-- Prefer OpenCode MCP integration for tool access and background retrieval.
-- Prefer OpenCode commands in `opencode.json` or `.opencode/commands/` for explicit CTX entrypoints inside the TUI.
-- Use project-local integration assets so a repository can be cloned and opened directly in OpenCode.
-- Generated command descriptions must be short and useful because OpenCode shows them in the TUI command list.
-- Generated commands should preserve the current OpenCode agent unless a command explicitly opts into `plan` or subtask mode.
-
-## Technical Guidelines
-
-- Do not require a second terminal for normal CTX usage once OpenCode integration is installed.
-- Do not require users to pipe shell output manually when the same behavior can be exposed through MCP tools or OpenCode commands.
-- Keep the CTX runtime local-first: `ctx mcp stdio` is the preferred transport for OpenCode integration.
-- Prefer committed project files over hidden one-off local setup whenever possible.
-- Preserve compatibility with `.ctx/` storage and the existing graph/memory/runtime model.
-- Do not reintroduce wrapper-first public UX for hosts when native integration points are available.
-
-## UX Guidelines
-
-- The user should be able to type normal prompts in OpenCode and benefit from CTX automatically.
-- The user should also have explicit CTX commands inside OpenCode for graph, memory, benchmark, doctor, and context/debug actions.
-- CTX commands inside OpenCode should feel like first-class commands, not hacks around shelling out.
-- The integration should be understandable from the repo alone: README, install docs, and project files should make the workflow obvious.
+- Prefer local MCP stdio for tool access.
+- Prefer `.opencode/commands/*.md` for explicit user-facing commands.
+- Keep generated command descriptions short and discoverable.
+- Keep project integration assets repo-local and reviewable.
+- Use `/ctx` as the command center and quickstart surface.
 
 ## Definition Of Success
 
-CTX is successful for OpenCode when:
+CTX is ready for OpenCode when:
 
-- a user opens `opencode` in a CTX-enabled repo and can use CTX without leaving the TUI;
-- the model selected in OpenCode remains the one doing the work;
-- graph memory and retrieval reduce token usage without asking the user to manage a second interface;
-- legacy wrapper-first workflows stay out of the primary product path.
+- a user can clone a repo, run `ctx opencode install`, open `opencode`, and use CTX without leaving the TUI;
+- graph memory and retrieval reduce token usage without losing relevant project rules;
+- generated OpenCode assets are clear enough to inspect and commit;
+- docs, tests, and release scripts all describe the same OpenCode-first product.

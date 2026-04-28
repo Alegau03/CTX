@@ -1,80 +1,84 @@
 # CTX
 
-Local-first context runtime for coding agents.
+**OpenCode-first graph memory and local context runtime for coding agents.**
 
-CTX reduces prompt noise, preserves high-signal project knowledge, and replaces large instruction markdown files with queryable graph memory that can be retrieved only when relevant.
+CTX helps OpenCode work with less prompt noise by turning project rules, code structure, logs, diffs, and task context into a local queryable runtime. Instead of rereading giant markdown instruction files or dumping broad file trees into every prompt, CTX lets the host retrieve the smallest useful slice for the current task.
+
+> Status: CTX is OpenCode-first. The supported daily workflow is to install `ctx`, bootstrap a repo with `ctx opencode install`, then use `/ctx-*` commands from inside OpenCode.
+
+## Contents
+
+- [What CTX Is](#what-ctx-is)
+- [Proof From The Demo Fixture](#proof-from-the-demo-fixture)
+- [OpenCode-First Usage](#opencode-first-usage)
+- [What Works Today](#what-works-today)
+- [How It Works](#how-it-works)
+- [Demo And Screenshots](#demo-and-screenshots)
+- [Security](#security)
+- [Documentation](#documentation)
+- [Repository Layout](#repository-layout)
+- [Roadmap](#roadmap)
 
 ## What CTX Is
 
-CTX is not a replacement for your host agent CLI.
-
-The primary product direction is OpenCode-first:
-
-- open `opencode`
-- keep the host-selected model and agent
-- use CTX from inside OpenCode through `/ctx-*`
-- let CTX provide graph memory, retrieval, pruning, compact packing, diagnostics, and benchmark tooling
-
-CTX can also bootstrap native integrations for Codex and Claude Code, but OpenCode is the main product path.
+CTX is a local runtime layer for OpenCode. It indexes the repository, stores reusable project guidance as graph memory, exposes MCP tools, and generates OpenCode commands so the selected OpenCode model can retrieve compact context on demand.
 
 ## Why It Exists
 
-Modern coding agents often waste context budget on:
+Modern coding agents waste context on things that are useful once but expensive forever:
 
-- huge logs
-- broad diffs
-- repeated project rules
-- large `AGENTS.md` or `CLAUDE.md` files that must be reread over and over
+| Problem | Traditional flow | CTX flow |
+|---|---|---|
+| Project rules | Reread a full `AGENTS.md` repeatedly | Import rules into graph memory and retrieve only relevant directives |
+| Noisy logs | Paste thousands of repeated lines | Prune logs into root-cause signal |
+| Broad diffs | Feed entire patches | Keep task-relevant hunks and changed symbols |
+| Code search | Manual file spelunking | Query local graph, snippets, symbols, and semantic ranking |
+| Agent integration | Wrapper commands outside the host | OpenCode-native `/ctx-*` commands and local MCP tools |
 
-CTX turns those signals into local structured runtime data:
+CTX is not another agent launcher. OpenCode keeps the selected model, provider, plugins, and normal workflow. CTX sits underneath as a local context layer.
 
-- graph-backed code understanding
-- graph memory directives
-- compact task packs
-- explainable pruning
-- local MCP tools
+## Proof From The Demo Fixture
 
-The goal is simple: pass less noise, keep more signal, and make the useful project context cheaper to retrieve.
+The committed demo benchmark compares a traditional markdown-rule flow against CTX graph memory on `demo/fixtures/opencode-auth-lab`.
 
-## Core Idea: Graph Memory
+| Metric | Result |
+|---|---:|
+| Markdown rule tokens | `744` |
+| Graph memory tokens | `180` |
+| Token reduction | `75.81%` |
+| Markdown answer success | `33.33%` |
+| Graph memory answer success | `100.00%` |
+| Quality winner | `graph` |
 
-CTX treats project habits and instructions as structured memory instead of one large markdown blob.
+Reproduce it with:
 
-That means a host can retrieve only the directives relevant to the current task.
-For example, if the task is about tests, CTX can surface only the testing-related directives instead of forcing the model to reread an entire `AGENTS.md` file.
+```bash
+scripts/demo/opencode-auth-lab-benchmark.sh ./target/debug/ctx
+```
 
-Today CTX supports:
+Evidence files:
 
-- importing existing markdown rule files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`
-- storing them as graph memory directives
-- querying them by topic
-- editing them through CTX commands
-- exporting them back to markdown when compatibility is needed
+- [benchmark report](demo/fixtures/opencode-auth-lab/benchmarks/report.md)
+- [benchmark JSON](demo/fixtures/opencode-auth-lab/benchmarks/report.json)
+- [demo walkthrough](docs/demo-walkthrough.md)
 
-## What Works Today
-
-Implemented and usable today:
-
-- Rust multi-crate workspace with a working `ctx` binary
-- local runtime bootstrap through `.ctx/config.toml`
-- deterministic log and diff pruning with parser packs and explainable provenance
-- advanced context packing with strict priority ordering and pack artifacts
-- SQLite graph with symbols, edges, snippet FTS, recent failures, recent decisions, and graph memory directives
-- cross-file dependency and call-graph enrichment from indexed symbol bodies
-- AST and symbol extraction for Rust, Python, TypeScript, and JavaScript
-- hybrid retrieval with graph, FTS, and semantic ranking with explicit local fallback
-- structured recent diff summaries with changed symbol extraction
-- graph memory CRUD, topic search, markdown bootstrap/import/export, and A/B benchmark support
-- local MCP runtime over HTTP JSON-RPC and stdio
-- security and privacy controls with local-only defaults, sensitive file blocking, and audit logging
-- repo-local OpenCode bootstrap through `ctx opencode install`
-- generated OpenCode slash-command surface under `.opencode/commands/`
-- repo-local Codex bootstrap through `ctx codex install`
-- repo-local Claude Code bootstrap through `ctx claude install`
+The claim is intentionally scoped to the included fixture until broader public benchmark runs are added.
 
 ## OpenCode-First Usage
 
-The supported daily path is:
+Install from source while the public release/tap is being finalized:
+
+```bash
+cargo install --locked --path crates/ctx-cli
+```
+
+If `ctx` is not found after install, add Cargo's bin directory to your shell PATH:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Enable CTX in a repository:
 
 ```bash
 ctx init
@@ -83,135 +87,126 @@ ctx opencode install
 opencode
 ```
 
-After that, stay inside OpenCode and use `/ctx-*` commands.
-
-The best first command inside OpenCode is now:
+Inside OpenCode, start with:
 
 ```text
 /ctx
 ```
 
-It opens a categorized CTX command center with quickstart guidance, examples, and the best next command for the current repository state.
+Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-prune-logs`, and benchmark commands without leaving OpenCode.
 
-The full usage order, command reference, examples, and expected outputs live in [guide.md](guide.md).
+For full usage, examples, and expected output, see [guide.md](guide.md).
 
-The in-repo real-world validation project lives at:
+## What Works Today
 
-- `demo/fixtures/opencode-auth-lab`
+| Area | Current state |
+|---|---|
+| OpenCode integration | `ctx opencode install` writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md` |
+| Command menu | `/ctx` opens a categorized CTX command center inside OpenCode |
+| Graph memory | Bootstrap/import/search/list/get/set/delete/export project directives |
+| Context packing | Builds compact task packs with graph, memory, diff, failure, and attachment signals |
+| Retrieval | Hybrid graph, FTS, snippets, symbols, and semantic ranking with local fallback |
+| Pruning | Deterministic log and diff pruning with parser-aware diagnostics |
+| MCP | Local stdio MCP plus localhost HTTP JSON-RPC runtime |
+| Analysis | Rust, Python, TypeScript, and JavaScript symbol extraction and call/dependency enrichment |
+| Benchmarks | Markdown-vs-graph memory A/B suite with Markdown and JSON reports |
+| Privacy | Local-only defaults, sensitive attachment blocking, and local audit logs |
 
-## Host Integrations
+## How It Works
 
-### OpenCode
+```mermaid
+flowchart LR
+    A["OpenCode session"] --> B["/ctx-* commands"]
+    A --> C["CTX MCP stdio tools"]
+    B --> D["ctx runtime"]
+    C --> D
+    D --> E["SQLite graph + FTS"]
+    D --> F["Graph memory directives"]
+    D --> G["Prune + pack pipeline"]
+    D --> H["Local stats + audit"]
+    F --> I["Small task-specific context"]
+    G --> I
+    E --> I
+    I --> A
+```
 
-`ctx opencode install`:
+Core idea: markdown project rules can still exist as seed material, but CTX imports them into graph memory so OpenCode can retrieve only the directives related to the current task.
 
-- creates or merges `opencode.json`
-- registers CTX as a local MCP server through `ctx --repo-root <repo> mcp stdio`
-- generates `.opencode/commands/*.md`
-- generates `.opencode/instructions/ctx-host-first.md`
-- preserves the host-selected OpenCode model because generated commands do not pin `agent` or `model`
+## Graph Memory
 
-### Codex
+Graph Memory is CTX's structured replacement for repeatedly loading full project-instruction markdown files. It keeps directives local, queryable, editable, and exportable when compatibility requires markdown again.
 
-`ctx codex install` writes:
+## Demo And Screenshots
 
-- `.codex/config.toml`
-- `.agents/skills/ctx-*/SKILL.md`
+| Asset | Status |
+|---|---|
+| Fixture project | `demo/fixtures/opencode-auth-lab` is committed |
+| Automated smoke | `scripts/demo/opencode-auth-lab-smoke.sh` |
+| MCP smoke | `scripts/demo/opencode-auth-lab-mcp-smoke.sh` |
+| Benchmark smoke | `scripts/demo/opencode-auth-lab-benchmark.sh` |
+| Screenshots | To be added under `docs/assets/` after manual OpenCode validation |
+| Demo video | To be recorded after final real-repo validation |
 
-### Claude Code
+Planned video flow is documented in [docs/demo-script.md](docs/demo-script.md).
 
-`ctx claude install` writes:
+## Security
 
-- `.mcp.json`
-- `.claude/skills/ctx-*/SKILL.md`
-
-## MCP Runtime
-
-CTX exposes local MCP-compatible tools so host CLIs can request only the context they need.
-
-Current transports:
-
-- HTTP JSON-RPC on `127.0.0.1`
-- stdio MCP for host-launched local processes
-
-Representative tool surface:
-
-- `get_relevant_context`
-- `project_map`
-- `search_symbols`
-- `related_failures`
-- `recent_decisions`
-- `get_compact_diff`
-- `memory_list`
-- `memory_search`
-- `memory_set`
-- `memory_import_markdown`
-- `memory_bootstrap_markdown`
-
-## Security Model
-
-CTX is local-first by default.
-
-Important defaults:
+CTX is local-first by default:
 
 - `local_only = true`
 - `remote_upload_enabled = false`
-- sensitive-looking files are blocked from pack attachments by default
-- privacy decisions are recorded locally in `.ctx/audit.log`
+- no mandatory network calls
+- `.ctx/graph.db`, `.ctx/packs/`, `.ctx/stats/`, and `.ctx/audit.log` stay local
+- sensitive-looking attachments such as `.env`, private keys, credentials, and secret files are blocked by default
 
-See [docs/security.md](docs/security.md) for the full threat model and privacy behavior.
+See [docs/security.md](docs/security.md).
 
 ## Documentation
 
-Start here:
+| File | Purpose |
+|---|---|
+| [guide.md](guide.md) | Full OpenCode usage guide, command reference, examples, expected outputs |
+| [docs/install.md](docs/install.md) | Install paths, PATH notes, release archive verification |
+| [docs/demo-walkthrough.md](docs/demo-walkthrough.md) | End-to-end fixture validation |
+| [docs/demo-script.md](docs/demo-script.md) | Recording/demo sequence |
+| [docs/opencode-integration.md](docs/opencode-integration.md) | OpenCode integration architecture |
+| [docs/architecture.md](docs/architecture.md) | Runtime architecture |
+| [docs/security.md](docs/security.md) | Privacy and trust model |
+| [docs/release-playbook.md](docs/release-playbook.md) | Release messaging and checklist |
+| [docs/final-qa.md](docs/final-qa.md) | Final QA gate |
+| [roadmap](docs/superpowers/plans/2026-04-25-final-release-roadmap.md) | Current release roadmap |
 
-- [guide.md](guide.md): usage order, commands, examples, expected outputs, OpenCode-first workflow
-- [docs/demo-walkthrough.md](docs/demo-walkthrough.md): end-to-end validation on the `demo/fixtures/opencode-auth-lab` fixture project
-- [docs/demo-script.md](docs/demo-script.md): live-demo order for presenting CTX on the fixture repo
-- [docs/install.md](docs/install.md): installation, release artifact verification, and smoke flow
-- [docs/release-playbook.md](docs/release-playbook.md): GitHub release framing, benchmark messaging, and launch checklist
-- [docs/final-qa.md](docs/final-qa.md): final OpenCode-native QA checklist and release gate
-- [docs/opencode-integration.md](docs/opencode-integration.md): OpenCode-native architecture target
-- [docs/security.md](docs/security.md): privacy defaults, threat model, and audit behavior
-- [docs/guidelines.md](docs/guidelines.md): product and architectural guardrails
-- [docs/codex-integration.md](docs/codex-integration.md): Codex-native bootstrap path
-- [docs/claude-integration.md](docs/claude-integration.md): Claude Code native bootstrap path
-- [docs/superpowers/plans/2026-04-25-final-release-roadmap.md](docs/superpowers/plans/2026-04-25-final-release-roadmap.md): current roadmap to release
+## Repository Layout
 
-## Status
+| Path | Purpose |
+|---|---|
+| `crates/ctx-cli` | `ctx` binary, OpenCode bootstrap, user-facing CLI commands |
+| `crates/ctx-core` | Runtime orchestration for indexing, packing, memory, retrieval, benchmarks |
+| `crates/ctx-graph` | SQLite graph, FTS, memory directives, run metadata |
+| `crates/ctx-mcp` | Local MCP runtime over stdio and localhost HTTP JSON-RPC |
+| `crates/ctx-pack` | Budget-aware context packing and rewriting |
+| `crates/ctx-prune` | Log and diff pruning |
+| `crates/ctx-ast` | Symbol extraction and code slicing |
+| `crates/ctx-semantic` | Semantic ranking and local fallback embedding backend |
+| `crates/ctx-telemetry` | Local stats, audit lines, benchmark summaries |
+| `demo/fixtures/opencode-auth-lab` | Realistic fixture project for smoke tests and benchmark proof |
+| `scripts/demo` | Demo smoke, MCP smoke, and benchmark scripts |
+| `scripts/release` | Build, package, verify, and final QA scripts |
 
-Current implementation status:
+## Roadmap
 
-- Phase 1: OpenCode-first product surface complete
-- Phase 2: wrapper cleanup complete
-- Phase 3: native host bootstraps complete
-- Phase 4: analysis and retrieval quality complete
-- Phase 5: demo and benchmark evidence complete
-- Phase 6: packaging, release assets, and final QA complete except public Homebrew/tap coordinates
+Completed:
 
-## Workspace Layout
+- OpenCode-native repo bootstrap
+- OpenCode `/ctx-*` command surface
+- graph memory CRUD, markdown bootstrap, and benchmark proof
+- parser-aware pruning and richer pack inputs
+- local MCP stdio/HTTP runtime
+- release archive build and verification scripts
 
-- `crates/ctx-cli`: `ctx` binary and host/bootstrap command surface
-- `crates/ctx-core`: orchestration for indexing, packing, memory, and benchmarking
-- `crates/ctx-config`: config parsing and runtime bootstrap
-- `crates/ctx-prune`: deterministic log and diff pruning
-- `crates/ctx-pack`: context rewriting and budget-aware packing
-- `crates/ctx-graph`: SQLite storage and query layer
-- `crates/ctx-intake`: query normalization and intent detection
-- `crates/ctx-ast`: structural parsing and slicing
-- `crates/ctx-semantic`: semantic ranking and embedding backend handling
-- `crates/ctx-telemetry`: stats and benchmark summary output
-- `crates/ctx-hooks`: hook and pre-prompt helpers
-- `crates/ctx-mcp`: MCP server runtime
-- `crates/ctx-token`: token estimation helpers
+Remaining before a public GitHub launch:
 
-## Source Material
-
-This repository is being implemented from:
-
-- `CTX_description.pdf`
-- `docs/superpowers/plans/2026-04-23-ctx-runtime-engine.md`
-
-The current release direction is tracked in:
-
-- [docs/superpowers/plans/2026-04-25-final-release-roadmap.md](docs/superpowers/plans/2026-04-25-final-release-roadmap.md)
+- add screenshots and recorded demo assets after manual validation
+- run the benchmark on at least one real external repository
+- finalize public release coordinates, repository URL, and Homebrew tap metadata
+- polish the first GitHub release notes with reproducible demo evidence

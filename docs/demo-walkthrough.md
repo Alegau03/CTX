@@ -2,19 +2,22 @@
 
 This walkthrough validates CTX on the in-repo fixture project:
 
-- `demo/fixtures/opencode-auth-lab/`
+```text
+demo/fixtures/opencode-auth-lab
+```
 
 ## Goal
 
-Demonstrate that CTX works end-to-end inside the OpenCode-first workflow:
+Show the full OpenCode-first CTX loop:
 
 - bootstrap a repo
 - install OpenCode integration
-- import AGENTS-style rules into graph memory
-- query only the relevant directives
-- prune noisy logs
-- build compact context
-- benchmark graph memory against markdown memory
+- import markdown rules into graph memory
+- retrieve only relevant memory directives
+- retrieve relevant code context
+- prune noisy logs/diffs
+- build compact task context
+- benchmark graph memory against full markdown rules
 
 ## Setup
 
@@ -22,11 +25,11 @@ Demonstrate that CTX works end-to-end inside the OpenCode-first workflow:
 ctx --repo-root demo/fixtures/opencode-auth-lab init
 ctx --repo-root demo/fixtures/opencode-auth-lab index
 ctx --repo-root demo/fixtures/opencode-auth-lab opencode install
+cd demo/fixtures/opencode-auth-lab
+opencode
 ```
 
-## OpenCode flow
-
-Open the fixture repo in OpenCode and run:
+## OpenCode Flow
 
 ```text
 /ctx
@@ -35,18 +38,19 @@ Open the fixture repo in OpenCode and run:
 /ctx-memory-search auth root cause
 /ctx-retrieve refresh token auth failure
 /ctx-pack fix refresh token rotation
+/ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json
 ```
 
-## Expected outcomes
+## Expected Outcomes
 
-- graph memory is populated from markdown seed files
-- `/ctx` shows the categorized CTX command center and recommends a sensible next command
-- topic search returns auth and testing rules without rereading the full markdown corpus
-- retrieval surfaces the refresh-route and session code
-- prune logs isolates the root assertion failure
-- pack produces compact context with graph, memory, and recent signals
+- `/ctx` opens the command center.
+- graph memory imports `AGENTS.md` and `.github/copilot-instructions.md`.
+- memory search returns auth/testing directives without rereading the full markdown source.
+- retrieval surfaces refresh-route/session/test files.
+- pack produces compact context with graph, memory, and recent signals.
+- benchmark reports show the markdown-vs-graph token delta.
 
-## Automated validation
+## Automated Validation
 
 ```bash
 scripts/demo/opencode-auth-lab-smoke.sh ./target/debug/ctx

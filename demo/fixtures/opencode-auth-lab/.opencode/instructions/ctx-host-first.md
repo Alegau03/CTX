@@ -7,7 +7,7 @@ CTX is the local context runtime for this repository.
 - Stay inside OpenCode for normal work.
 - Prefer CTX slash commands and CTX MCP tools before broad file dumping.
 - Keep the current OpenCode-selected model and agent in control.
-- Do not revive wrapper-style workflows like `ctx wrap`, `ctx codex`, `ctx claude`, or `ctx opencode run`.
+- Do not revive wrapper-style workflows like `ctx wrap` or `ctx opencode run`.
 
 ## Automatic CTX Usage
 

@@ -10,7 +10,6 @@ members = [
   "crates/ctx-pack",
   "crates/ctx-graph",
   "crates/ctx-mcp",
-  "crates/ctx-adapters",
   "crates/ctx-hooks",
   "crates/ctx-telemetry",
   "crates/ctx-token",

@@ -5,17 +5,16 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
-use ctx_adapters::{AdapterRunStatus, Agent, execute_invocation_with_result, prepare_invocation};
 use ctx_ast::{SymbolKind, extract_symbols, slice_symbols};
 use ctx_config::{CtxConfig, write_default_config};
-use ctx_graph::{GraphStore, MemoryDirective, RunInsert, SnippetHit, SymbolHit};
+use ctx_graph::{GraphStore, MemoryDirective, SnippetHit, SymbolHit};
 use ctx_intake::{Intent, QueryIntake};
 use ctx_pack::{PackInput, PackResult, build_pack};
 use ctx_prune::{PruneReport, prune_diff, prune_logs};
 use ctx_semantic::{ChunkCandidate, SemanticBackendKind, SemanticEngineConfig, rank_chunks};
 use ctx_telemetry::{
-    AuditEvent, PrivacyAuditEvent, StatsSnapshot, append_audit_event, append_audit_line,
-    append_privacy_audit_event, write_latest_stats,
+    PrivacyAuditEvent, StatsSnapshot, append_audit_line, append_privacy_audit_event,
+    write_latest_stats,
 };
 use ctx_token::estimate_tokens;
 use regex::Regex;
@@ -143,22 +142,6 @@ pub struct MemoryExportReport {
     pub output_path: String,
     pub scope: Option<String>,
     pub directives: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct AdapterRunReport {
-    pub agent: String,
-    pub command: String,
-    pub status: String,
-    pub exit_code: Option<i32>,
-    pub duration_ms: u64,
-    pub fallback_used: bool,
-    pub fallback_reason: Option<String>,
-    pub original_tokens: usize,
-    pub packed_tokens: usize,
-    pub reduction_pct: f64,
-    pub pack_path: Option<String>,
-    pub prompt_preview: Option<String>,
 }
 
 pub fn init_repo(repo_root: &Path) -> Result<PathBuf> {
@@ -297,94 +280,6 @@ pub fn run_pack(
     );
 
     Ok(result)
-}
-
-pub fn run_agent_invocation(
-    repo_root: &Path,
-    agent: Agent,
-    query: &str,
-    budget: Option<usize>,
-    attach: Option<&Path>,
-) -> Result<AdapterRunReport> {
-    let started = Instant::now();
-    let packed = run_pack(repo_root, query, budget, attach)?;
-    let invocation = prepare_invocation(agent, query, &packed.compact_context);
-    let execution = execute_invocation_with_result(&invocation).with_context(|| {
-        format!(
-            "failed to execute adapter '{}' via '{}'",
-            agent.label(),
-            invocation.program
-        )
-    })?;
-    let duration_ms = started.elapsed().as_millis() as u64;
-    let status = adapter_status_label(execution.status).to_string();
-    let pack_path = packed.pack_path.clone();
-    let prompt_preview = if execution.fallback_used {
-        Some(invocation.prompt.clone())
-    } else {
-        None
-    };
-
-    let cfg = load_or_default_config(repo_root)?;
-    if cfg.graph.enabled {
-        let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
-        store.init_schema()?;
-        let _ = store.record_invocation_run(&RunInsert {
-            command: execution.command.clone(),
-            status: status.clone(),
-            agent: Some(agent.label().to_string()),
-            exit_code: execution.exit_code,
-            duration_ms: Some(duration_ms),
-            original_tokens: Some(packed.original_estimated_tokens),
-            packed_tokens: Some(packed.packed_tokens),
-            reduction_pct: Some(packed.reduction_pct),
-            fallback_used: execution.fallback_used,
-            pack_path: pack_path.clone(),
-        });
-    }
-
-    let stats = StatsSnapshot {
-        original_tokens: packed.original_estimated_tokens,
-        packed_tokens: packed.packed_tokens,
-        reduction_pct: packed.reduction_pct,
-        latency_ms: duration_ms,
-        agent: Some(agent.label().to_string()),
-        command: Some(execution.command.clone()),
-        status: Some(status.clone()),
-        exit_code: execution.exit_code,
-        fallback_used: execution.fallback_used,
-        pack_path: pack_path.clone(),
-    };
-    if cfg.security.local_stats_enabled {
-        let _ = write_latest_stats(&repo_root.join(".ctx/stats"), &stats);
-    }
-    let _ = append_audit_event(
-        &repo_root.join(".ctx/audit.log"),
-        &AuditEvent {
-            kind: "adapter_invocation".to_string(),
-            message: format!("ctx invoked {}", agent.label()),
-            agent: Some(agent.label().to_string()),
-            command: Some(execution.command.clone()),
-            status: Some(status.clone()),
-            fallback_used: execution.fallback_used,
-            pack_path: pack_path.clone(),
-        },
-    );
-
-    Ok(AdapterRunReport {
-        agent: agent.label().to_string(),
-        command: execution.command,
-        status,
-        exit_code: execution.exit_code,
-        duration_ms,
-        fallback_used: execution.fallback_used,
-        fallback_reason: execution.fallback_reason,
-        original_tokens: packed.original_estimated_tokens,
-        packed_tokens: packed.packed_tokens,
-        reduction_pct: packed.reduction_pct,
-        pack_path,
-        prompt_preview,
-    })
 }
 
 pub fn run_explain(repo_root: &Path, query: &str) -> Result<ExplainResult> {
@@ -1429,8 +1324,6 @@ fn load_memory_context(
 fn default_memory_markdown_paths(repo_root: &Path) -> Vec<PathBuf> {
     vec![
         repo_root.join("AGENTS.md"),
-        repo_root.join("CLAUDE.md"),
-        repo_root.join("CODEX.md"),
         repo_root.join(".github/copilot-instructions.md"),
     ]
 }
@@ -1645,14 +1538,6 @@ fn audit_privacy_decision(
             message: message.to_string(),
         },
     );
-}
-
-fn adapter_status_label(status: AdapterRunStatus) -> &'static str {
-    match status {
-        AdapterRunStatus::Succeeded => "succeeded",
-        AdapterRunStatus::Failed => "failed",
-        AdapterRunStatus::Fallback => "fallback",
-    }
 }
 
 fn append_audit_entry(repo_root: &Path, line: &str) -> Result<()> {

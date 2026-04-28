@@ -1,7 +1,7 @@
 [general]
 repo_root = "."
 default_budget = 6000
-agent = "codex"
+agent = "opencode"
 
 [pruning]
 collapse_success_logs = true

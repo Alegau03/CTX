@@ -9,8 +9,6 @@ Arguments:
 
 If no arguments are provided, run `ctx memory bootstrap` so CTX scans common files such as:
 - `AGENTS.md`
-- `CLAUDE.md`
-- `CODEX.md`
 - `.github/copilot-instructions.md`
 
 Then show how many files and directives were imported.

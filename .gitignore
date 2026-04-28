@@ -1,3 +1,5 @@
 /target
+/dist
 /.ctx
+**/.ctx/
 .DS_Store

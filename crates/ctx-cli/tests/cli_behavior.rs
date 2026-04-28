@@ -316,25 +316,6 @@ fn hook_command_outputs_pre_prompt_payload_for_agent_hooks() {
 }
 
 #[test]
-fn mcp_config_claude_outputs_stdio_configuration() {
-    let tmp = tempdir().expect("tempdir");
-
-    Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["mcp", "config", "claude"])
-        .current_dir(tmp.path())
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"mcpServers\""))
-        .stdout(predicate::str::contains("\"ctx\""))
-        .stdout(predicate::str::contains("\"mcp\""))
-        .stdout(predicate::str::contains("\"stdio\""))
-        .stdout(predicate::str::contains(
-            tmp.path().to_string_lossy().as_ref(),
-        ));
-}
-
-#[test]
 fn mcp_config_opencode_outputs_local_mcp_configuration() {
     let tmp = tempdir().expect("tempdir");
 
@@ -376,23 +357,16 @@ fn mcp_config_opencode_outputs_local_mcp_configuration() {
 }
 
 #[test]
-fn mcp_config_codex_outputs_toml_configuration() {
+fn mcp_config_rejects_unknown_host_clients() {
     let tmp = tempdir().expect("tempdir");
 
     Command::cargo_bin("ctx")
         .expect("bin")
-        .args(["mcp", "config", "codex"])
+        .args(["mcp", "config", "unknownhost"])
         .current_dir(tmp.path())
         .assert()
-        .success()
-        .stdout(predicate::str::contains("[mcp_servers.ctx]"))
-        .stdout(predicate::str::contains("command = \"ctx\""))
-        .stdout(predicate::str::contains("args = ["))
-        .stdout(predicate::str::contains("mcp"))
-        .stdout(predicate::str::contains("stdio"))
-        .stdout(predicate::str::contains(
-            tmp.path().to_string_lossy().as_ref(),
-        ));
+        .failure()
+        .stderr(predicate::str::contains("Expected: opencode or http"));
 }
 
 #[test]
@@ -408,7 +382,7 @@ fn opencode_install_creates_project_config_and_command_files() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["commands_written"], 32);
+    assert_eq!(report["commands_written"], 31);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -452,7 +426,6 @@ fn opencode_install_creates_project_config_and_command_files() {
         "ctx-opencode-install.md",
         "ctx-mcp-serve.md",
         "ctx-mcp-stdio.md",
-        "ctx-mcp-config-claude.md",
         "ctx-mcp-config-opencode.md",
         "ctx-memory-set.md",
         "ctx-memory-get.md",
@@ -485,69 +458,6 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(menu_command.contains("CTX Command Center"));
     assert!(menu_command.contains("Recommended Start"));
     assert!(menu_command.contains("/ctx-pack <task>"));
-}
-
-#[test]
-fn codex_install_creates_project_config_and_skill_assets() {
-    let tmp = tempdir().expect("tempdir");
-
-    let output = Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["--json", "codex", "install"])
-        .current_dir(tmp.path())
-        .output()
-        .expect("run ctx");
-
-    assert!(output.status.success());
-    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["skills_written"], 32);
-
-    let config =
-        std::fs::read_to_string(tmp.path().join(".codex/config.toml")).expect("codex config");
-    assert!(config.contains("[mcp_servers.ctx]"));
-    assert!(config.contains("command = \"ctx\""));
-    assert!(config.contains("mcp"));
-    assert!(config.contains("stdio"));
-
-    let skill_path = tmp.path().join(".agents/skills/ctx-pack/SKILL.md");
-    assert!(skill_path.exists(), "missing ctx-pack Codex skill");
-    let skill = std::fs::read_to_string(skill_path).expect("read codex skill");
-    assert!(skill.contains("name: ctx-pack"));
-    assert!(skill.contains("Run `ctx pack"));
-}
-
-#[test]
-fn claude_install_creates_project_mcp_and_skill_assets() {
-    let tmp = tempdir().expect("tempdir");
-
-    let output = Command::cargo_bin("ctx")
-        .expect("bin")
-        .args(["--json", "claude", "install"])
-        .current_dir(tmp.path())
-        .output()
-        .expect("run ctx");
-
-    assert!(output.status.success());
-    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["skills_written"], 32);
-
-    let config = std::fs::read_to_string(tmp.path().join(".mcp.json")).expect("claude mcp config");
-    let value: serde_json::Value = serde_json::from_str(&config).expect("claude mcp json");
-    assert!(value["mcpServers"]["ctx"].is_object());
-    assert_eq!(value["mcpServers"]["ctx"]["command"], "ctx");
-    assert!(
-        value["mcpServers"]["ctx"]["args"]
-            .as_array()
-            .expect("claude args")
-            .iter()
-            .any(|item| item == "stdio")
-    );
-
-    let skill_path = tmp.path().join(".claude/skills/ctx-pack/SKILL.md");
-    assert!(skill_path.exists(), "missing ctx-pack Claude skill");
-    let skill = std::fs::read_to_string(skill_path).expect("read claude skill");
-    assert!(skill.contains("name: ctx-pack"));
-    assert!(skill.contains("/ctx-pack"));
 }
 
 #[test]
@@ -633,11 +543,6 @@ fn help_command_prints_command_guide_with_examples() {
         .stdout(predicate::str::contains("ctx hook"))
         .stdout(predicate::str::contains("ctx mcp stdio"))
         .stdout(predicate::str::contains("ctx opencode install"))
-        .stdout(predicate::str::contains("ctx codex install"))
-        .stdout(predicate::str::contains("ctx claude install"))
-        .stdout(predicate::str::contains("ctx mcp config codex"))
-        .stdout(predicate::str::contains("ctx codex \"").not())
-        .stdout(predicate::str::contains("ctx claude \"").not())
         .stdout(predicate::str::contains("ctx opencode run").not())
         .stdout(predicate::str::contains("ctx memory set"))
         .stdout(predicate::str::contains("ctx benchmark memory-ab"))
@@ -649,9 +554,7 @@ fn legacy_wrapper_commands_are_removed_from_public_cli() {
     let tmp = tempdir().expect("tempdir");
 
     for args in [
-        vec!["wrap", "claude", "--prompt", "explain auth failure"],
-        vec!["codex", "review risky diff"],
-        vec!["claude", "explain flaky test"],
+        vec!["wrap", "agent", "--prompt", "explain auth failure"],
         vec!["opencode", "run", "explain diff"],
     ] {
         Command::cargo_bin("ctx")
@@ -709,13 +612,9 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("GitHub Releases"));
     assert!(install_docs.contains("cargo install"));
     assert!(install_docs.contains("ctx doctor"));
-    assert!(install_docs.contains("ctx codex install"));
-    assert!(install_docs.contains("ctx claude install"));
     assert!(install_docs.contains("scripts/release/opencode-smoke.sh"));
     assert!(install_docs.contains("scripts/release/verify-artifact.sh"));
     assert!(install_docs.contains("release-manifest.json"));
-    assert!(readme.contains("docs/codex-integration.md"));
-    assert!(readme.contains("docs/claude-integration.md"));
     assert!(readme.contains("guide.md"));
     assert!(guide.contains("OpenCode-First Workflow"));
     assert!(guide.contains("Command Reference"));

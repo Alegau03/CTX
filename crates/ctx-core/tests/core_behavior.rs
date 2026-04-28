@@ -138,38 +138,6 @@ fn run_pack_appends_audit_log_entry() {
 }
 
 #[test]
-fn run_agent_invocation_records_fallback_metadata_when_binary_missing() {
-    let tmp = tempdir().expect("tempdir");
-    init_repo(tmp.path()).expect("init");
-
-    let report = ctx_core::run_agent_invocation(
-        tmp.path(),
-        ctx_adapters::Agent::Claude,
-        "explain flaky test",
-        Some(500),
-        None,
-    )
-    .expect("run invocation");
-
-    assert_eq!(report.agent, "claude");
-    assert_eq!(report.status, "fallback");
-    assert!(report.fallback_used);
-    assert!(
-        report
-            .prompt_preview
-            .expect("fallback prompt")
-            .contains("[CTX COMPACT CONTEXT]")
-    );
-
-    let stats = std::fs::read_to_string(tmp.path().join(".ctx/stats/latest.json")).expect("stats");
-    assert!(stats.contains("claude"));
-    assert!(stats.contains("fallback"));
-
-    let audit = std::fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit");
-    assert!(audit.contains("adapter_invocation"));
-}
-
-#[test]
 fn run_pack_includes_advanced_context_and_writes_pack_artifact() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");

@@ -16,13 +16,6 @@ fn opencode_host_first_docs_capture_the_product_pivot() {
     let guidelines = fs::read_to_string(root.join("docs/guidelines.md")).expect("guidelines");
     let integration =
         fs::read_to_string(root.join("docs/opencode-integration.md")).expect("integration doc");
-    let codex_integration =
-        fs::read_to_string(root.join("docs/codex-integration.md")).expect("codex integration doc");
-    let claude_integration = fs::read_to_string(root.join("docs/claude-integration.md"))
-        .expect("claude integration doc");
-    let plan =
-        fs::read_to_string(root.join("docs/superpowers/plans/2026-04-24-opencode-host-first.md"))
-            .expect("pivot plan");
     let release_roadmap =
         fs::read_to_string(root.join("docs/superpowers/plans/2026-04-25-final-release-roadmap.md"))
             .expect("final roadmap");
@@ -32,18 +25,13 @@ fn opencode_host_first_docs_capture_the_product_pivot() {
     assert!(readme.contains("guide.md"));
     assert!(readme.contains("Graph Memory"));
     assert!(guidelines.contains("OpenCode-first is the highest-priority integration target."));
-    assert!(guidelines.contains("Codex and Claude Code should follow"));
+    assert!(guidelines.contains("OpenCode-native commands are the product surface"));
     assert!(guidelines.contains("wrapper-first UX as legacy"));
     assert!(integration.contains("Make CTX live inside OpenCode"));
     assert!(integration.contains("should open `opencode`"));
-    assert!(codex_integration.contains("ctx codex install"));
-    assert!(codex_integration.contains(".agents/skills/ctx-*/SKILL.md"));
-    assert!(claude_integration.contains("ctx claude install"));
-    assert!(claude_integration.contains(".claude/skills/ctx-*/SKILL.md"));
-    assert!(plan.contains("historical pivot plan"));
     assert!(release_roadmap.contains("Wrapper-first public CLI entrypoints have been removed"));
-    assert!(release_roadmap.contains("Phase 3 is complete."));
-    assert!(guide.contains("Recommended Order In A Real Repository"));
+    assert!(release_roadmap.contains("Remaining Before Public GitHub Release"));
+    assert!(guide.contains("Recommended Order"));
     assert!(guide.contains("Graph Memory Workflow"));
 }
 
@@ -96,7 +84,6 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
         "ctx-opencode-install.md",
         "ctx-mcp-serve.md",
         "ctx-mcp-stdio.md",
-        "ctx-mcp-config-claude.md",
         "ctx-mcp-config-opencode.md",
         "ctx-memory-set.md",
         "ctx-memory-get.md",

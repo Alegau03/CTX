@@ -9,13 +9,13 @@ fn parses_minimal_toml_into_defaults() {
         r#"
 [general]
 default_budget = 7000
-agent = "claude"
+agent = "opencode"
 "#,
     )
     .expect("parse should succeed");
 
     assert_eq!(parsed.general.default_budget, 7000);
-    assert_eq!(parsed.general.agent, "claude");
+    assert_eq!(parsed.general.agent, "opencode");
     assert!(parsed.pruning.collapse_success_logs);
     assert_eq!(parsed.mcp.port, 8765);
 }

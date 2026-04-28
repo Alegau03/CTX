@@ -113,9 +113,9 @@ fn invocation_runs_persist_full_metadata() {
 
     let run_id = store
         .record_invocation_run(&ctx_graph::RunInsert {
-            command: "claude -p \"fix auth\"".to_string(),
+            command: "/ctx-pack \"fix auth\"".to_string(),
             status: "succeeded".to_string(),
-            agent: Some("claude".to_string()),
+            agent: Some("opencode".to_string()),
             exit_code: Some(0),
             duration_ms: Some(42),
             original_tokens: Some(1200),
@@ -128,7 +128,7 @@ fn invocation_runs_persist_full_metadata() {
 
     assert!(run_id > 0);
     let runs = store.recent_runs(5).expect("recent runs");
-    assert_eq!(runs[0].agent.as_deref(), Some("claude"));
+    assert_eq!(runs[0].agent.as_deref(), Some("opencode"));
     assert_eq!(runs[0].status, "succeeded");
     assert_eq!(runs[0].packed_tokens, Some(240));
     assert!(!runs[0].fallback_used);
@@ -156,9 +156,9 @@ fn init_schema_migrates_existing_runs_table() {
     store.init_schema().expect("migrate schema");
     store
         .record_invocation_run(&ctx_graph::RunInsert {
-            command: "codex exec \"review\"".to_string(),
+            command: "/ctx-ask \"review\"".to_string(),
             status: "fallback".to_string(),
-            agent: Some("codex".to_string()),
+            agent: Some("opencode".to_string()),
             exit_code: None,
             duration_ms: Some(1),
             original_tokens: Some(100),
@@ -170,7 +170,7 @@ fn init_schema_migrates_existing_runs_table() {
         .expect("record after migrate");
 
     let runs = store.recent_runs(1).expect("recent");
-    assert_eq!(runs[0].agent.as_deref(), Some("codex"));
+    assert_eq!(runs[0].agent.as_deref(), Some("opencode"));
     assert!(runs[0].fallback_used);
 }
 

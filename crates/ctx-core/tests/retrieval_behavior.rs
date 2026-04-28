@@ -92,7 +92,7 @@ fn retrieval_uses_semantic_config_and_reports_onnx_fallback() {
 [general]
 repo_root = "."
 default_budget = 6000
-agent = "codex"
+agent = "opencode"
 
 [pruning]
 collapse_success_logs = true

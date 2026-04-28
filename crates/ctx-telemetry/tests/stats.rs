@@ -53,8 +53,8 @@ fn writes_invocation_fields_in_latest_stats() {
         packed_tokens: 200,
         reduction_pct: 80.0,
         latency_ms: 44,
-        agent: Some("claude".to_string()),
-        command: Some("claude -p \"fix\"".to_string()),
+        agent: Some("opencode".to_string()),
+        command: Some("/ctx-pack \"fix\"".to_string()),
         status: Some("succeeded".to_string()),
         exit_code: Some(0),
         fallback_used: false,
@@ -63,6 +63,6 @@ fn writes_invocation_fields_in_latest_stats() {
 
     write_latest_stats(&stats_dir, &snapshot).expect("write");
     let body = std::fs::read_to_string(stats_dir.join("latest.json")).expect("read body");
-    assert!(body.contains("claude"));
+    assert!(body.contains("opencode"));
     assert!(body.contains("fallback_used"));
 }

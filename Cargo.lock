@@ -280,14 +280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctx-adapters"
-version = "0.1.0"
-dependencies = [
- "serde",
- "tempfile",
-]
-
-[[package]]
 name = "ctx-ast"
 version = "0.1.0"
 dependencies = [
@@ -314,7 +306,6 @@ dependencies = [
  "predicates",
  "serde_json",
  "tempfile",
- "toml",
 ]
 
 [[package]]
@@ -332,7 +323,6 @@ name = "ctx-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ctx-adapters",
  "ctx-ast",
  "ctx-config",
  "ctx-graph",

@@ -2,15 +2,17 @@
 
 Use this order for a live demo or recording.
 
-1. Show the fixture repo at `demo/fixtures/opencode-auth-lab/`.
-2. Show the classic markdown rules in `AGENTS.md` and `.github/copilot-instructions.md`.
+1. Show `demo/fixtures/opencode-auth-lab`.
+2. Show the longer `AGENTS.md` file and explain that traditional agents tend to reread it wholesale.
 3. Run `ctx init`, `ctx index`, and `ctx opencode install`.
-4. Open OpenCode.
-5. Run `/ctx-memory-bootstrap`.
-6. Run `/ctx-memory-search auth root cause`.
-7. Run `/ctx-retrieve refresh token auth failure`.
-8. Run `/ctx-prune-logs` on the noisy Vitest log.
-9. Run `/ctx-pack fix refresh token rotation`.
-10. Run `/ctx-benchmark-memory-ab` or the benchmark suite to show the token delta story.
+4. Open `opencode`.
+5. Run `/ctx` to show the command center.
+6. Run `/ctx-memory-bootstrap` to import markdown rules into graph memory.
+7. Run `/ctx-memory-search auth root cause` to show targeted memory retrieval.
+8. Run `/ctx-retrieve refresh token auth failure` to show code retrieval.
+9. Run `/ctx-prune-logs` on the fixture log if demonstrating noisy output cleanup.
+10. Run `/ctx-pack fix refresh token rotation` to show compact task context.
+11. Run `/ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json`.
+12. Open the report and highlight the current fixture result: `75.81%` fewer rule tokens with graph memory and a graph-quality win.
 
-The key message is that CTX lets the host retrieve only the relevant memory and code context instead of re-reading large markdown files and noisy logs every time.
+Closing message: CTX lets OpenCode retrieve the memory and code context it needs without repeatedly paying for full markdown files, huge logs, or broad diffs.
