@@ -835,9 +835,9 @@ What it does: Imports markdown habit files into graph memory directives.
 Example: ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
 
 21) ctx memory bootstrap [paths...] [--scope s] [--source src]
-What it does: Auto-imports conventional markdown rule files like `AGENTS.md` and `.github/copilot-instructions.md`.
+What it does: Auto-imports conventional markdown rule files like `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
 Example: ctx memory bootstrap
-Example: ctx memory bootstrap AGENTS.md .github/copilot-instructions.md
+Example: ctx memory bootstrap AGENTS.md CLAUDE.md CODEX.md .github/copilot-instructions.md
 
 22) ctx memory export --to <file> [--scope s] [--limit n]
 What it does: Exports graph memory directives back to markdown for compatibility or auditing.

@@ -130,18 +130,12 @@ pub fn serve_http(cfg: McpServerConfig) -> Result<()> {
 
 pub fn serve_stdio(cfg: McpServerConfig) -> Result<()> {
     let stdin = io::stdin();
+    let mut stdin = io::BufReader::new(stdin.lock());
     let mut stdout = io::stdout();
 
-    for line in stdin.lock().lines() {
-        let line = line.context("failed to read stdio rpc line")?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let response = process_rpc_message(&cfg, &line);
-        writeln!(stdout, "{response}").context("failed to write stdio rpc response")?;
-        stdout
-            .flush()
-            .context("failed to flush stdio rpc response")?;
+    while let Some(body) = read_stdio_rpc_message(&mut stdin)? {
+        let response = process_rpc_message(&cfg, &body);
+        write_stdio_rpc_response(&mut stdout, &response)?;
     }
 
     Ok(())
@@ -189,6 +183,77 @@ fn handle_http_request(cfg: &McpServerConfig, mut request: Request) -> Result<()
             respond_json(request, StatusCode(404), payload)
         }
     }
+}
+
+fn read_stdio_rpc_message<R: BufRead>(reader: &mut R) -> Result<Option<String>> {
+    let mut first_line = String::new();
+    loop {
+        first_line.clear();
+        let bytes = reader
+            .read_line(&mut first_line)
+            .context("failed to read stdio rpc line")?;
+        if bytes == 0 {
+            return Ok(None);
+        }
+        if !first_line.trim().is_empty() {
+            break;
+        }
+    }
+
+    if first_line.trim_start().starts_with('{') {
+        return Ok(Some(first_line.trim_end().to_string()));
+    }
+
+    let mut content_length = None;
+    let mut header_line = first_line;
+    loop {
+        let trimmed = header_line.trim();
+        if trimmed.is_empty() {
+            break;
+        }
+
+        let (name, value) = trimmed
+            .split_once(':')
+            .ok_or_else(|| anyhow!("invalid stdio rpc header: {trimmed}"))?;
+        if name.eq_ignore_ascii_case("Content-Length") {
+            content_length = Some(value.trim().parse::<usize>().with_context(|| {
+                format!("invalid Content-Length header value: {}", value.trim())
+            })?);
+        }
+
+        header_line = String::new();
+        let bytes = reader
+            .read_line(&mut header_line)
+            .context("failed to read stdio rpc header")?;
+        if bytes == 0 {
+            bail!("unexpected EOF while reading stdio rpc headers");
+        }
+    }
+
+    let content_length =
+        content_length.context("missing Content-Length header in stdio rpc request")?;
+    let mut payload = vec![0u8; content_length];
+    reader
+        .read_exact(&mut payload)
+        .context("failed to read stdio rpc body")?;
+
+    String::from_utf8(payload)
+        .context("stdio rpc body is not valid UTF-8")
+        .map(Some)
+}
+
+fn write_stdio_rpc_response<W: Write>(writer: &mut W, response: &str) -> Result<()> {
+    write!(
+        writer,
+        "Content-Length: {}\r\n\r\n{}",
+        response.len(),
+        response
+    )
+    .context("failed to write stdio rpc response")?;
+    writer
+        .flush()
+        .context("failed to flush stdio rpc response")?;
+    Ok(())
 }
 
 fn process_rpc(cfg: &McpServerConfig, method: &str, params: Option<&Value>) -> Result<Value> {

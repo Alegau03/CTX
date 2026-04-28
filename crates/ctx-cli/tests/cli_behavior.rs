@@ -337,7 +337,11 @@ fn mcp_config_opencode_outputs_local_mcp_configuration() {
     let command = value["mcp"]["ctx"]["command"]
         .as_array()
         .expect("command array");
-    assert_eq!(command.first().and_then(|item| item.as_str()), Some("ctx"));
+    let binary = command
+        .first()
+        .and_then(|item| item.as_str())
+        .expect("binary path");
+    assert!(std::path::Path::new(binary).is_absolute());
     let repo_root_index = command
         .iter()
         .position(|item| item == "--repo-root")
@@ -395,6 +399,17 @@ fn opencode_install_creates_project_config_and_command_files() {
     let value: serde_json::Value = serde_json::from_str(&config).expect("config json");
     assert_eq!(value["mcp"]["ctx"]["type"], "local");
     assert_eq!(value["mcp"]["ctx"]["enabled"], true);
+    let command = value["mcp"]["ctx"]["command"]
+        .as_array()
+        .expect("command array");
+    assert_eq!(command[1], "--repo-root");
+    let rendered_repo_root = command[2].as_str().expect("repo root value");
+    assert_eq!(
+        std::fs::canonicalize(rendered_repo_root).expect("canonical rendered repo root"),
+        std::fs::canonicalize(tmp.path()).expect("canonical temp repo root")
+    );
+    assert_eq!(command[3], "mcp");
+    assert_eq!(command[4], "stdio");
     let instructions = value["instructions"]
         .as_array()
         .expect("instructions array");
@@ -458,6 +473,14 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(menu_command.contains("CTX Command Center"));
     assert!(menu_command.contains("Recommended Start"));
     assert!(menu_command.contains("/ctx-pack <task>"));
+    assert!(menu_command.contains("/ctx-prune-logs <shell command>"));
+
+    let prune_logs_command =
+        std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-prune-logs.md"))
+            .expect("read prune logs command");
+    assert!(prune_logs_command.contains("must be a real shell command"));
+    assert!(prune_logs_command.contains("Do not treat `$ARGUMENTS` as a topic"));
+    assert!(prune_logs_command.contains("ctx prune logs --max-lines 50"));
 }
 
 #[test]
@@ -514,9 +537,12 @@ fn mcp_stdio_handles_initialize_message() {
         .expect("bin")
         .args(["mcp", "stdio"])
         .current_dir(tmp.path())
-        .write_stdin("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n")
+        .write_stdin(
+            "Content-Length: 58\r\n\r\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+        )
         .assert()
         .success()
+        .stdout(predicate::str::contains("Content-Length:"))
         .stdout(predicate::str::contains("\"serverInfo\""))
         .stdout(predicate::str::contains("\"ctx-mcp\""));
 }
@@ -1092,6 +1118,16 @@ fn memory_bootstrap_and_search_commands_cover_agents_to_graph_flow() {
         "# Rules\n- Run targeted tests before completion.\n- Fix auth root cause before merge.\n",
     )
     .expect("write agents");
+    fs::write(
+        tmp.path().join("CLAUDE.md"),
+        "# Claude\n- Keep route, session, and token semantics aligned.\n",
+    )
+    .expect("write claude");
+    fs::write(
+        tmp.path().join("CODEX.md"),
+        "# Codex\n- Preserve strong assertions in refresh token tests.\n",
+    )
+    .expect("write codex");
     fs::create_dir_all(tmp.path().join(".github")).expect("create .github");
     fs::write(
         tmp.path().join(".github/copilot-instructions.md"),
@@ -1112,7 +1148,7 @@ fn memory_bootstrap_and_search_commands_cover_agents_to_graph_flow() {
         .current_dir(tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("imported_files=2"))
+        .stdout(predicate::str::contains("imported_files=4"))
         .stdout(predicate::str::contains("imported_directives="));
 
     Command::cargo_bin("ctx")

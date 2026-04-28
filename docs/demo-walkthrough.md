@@ -37,6 +37,7 @@ opencode
 /ctx-memory-bootstrap
 /ctx-memory-search auth root cause
 /ctx-retrieve refresh token auth failure
+/ctx-prune-logs npm test -- --grep "refresh"
 /ctx-pack fix refresh token rotation
 /ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json
 ```
@@ -44,7 +45,7 @@ opencode
 ## Expected Outcomes
 
 - `/ctx` opens the command center.
-- graph memory imports `AGENTS.md` and `.github/copilot-instructions.md`.
+- graph memory imports `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
 - memory search returns auth/testing directives without rereading the full markdown source.
 - retrieval surfaces refresh-route/session/test files.
 - pack produces compact context with graph, memory, and recent signals.

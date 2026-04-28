@@ -164,11 +164,16 @@ fn opencode_project_config_value(repo_root: &Path) -> Value {
 }
 
 fn opencode_ctx_mcp_server_value(repo_root: &Path) -> Value {
+    let binary = std::env::current_exe()
+        .ok()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "ctx".to_string());
+
     json!({
         "type": "local",
         "enabled": true,
         "command": [
-            "ctx",
+            binary,
             "--repo-root",
             repo_root.to_string_lossy(),
             "mcp",
@@ -226,7 +231,7 @@ Then present this menu in English using short sections, aligned bullets, and cle
 - `/ctx-memory-export <file>`
 
 ## Debug
-- `/ctx-prune-logs <topic>`
+- `/ctx-prune-logs <shell command>`
 - `/ctx-prune-diff <topic>`
 - `/ctx-hook <task>`
 
@@ -346,9 +351,13 @@ Show the graph matches and explain the most relevant relationships."#,
             body: r#"Prune noisy logs with CTX.
 
 Arguments:
-- `$ARGUMENTS`: the shell command that produces logs
+- `$ARGUMENTS`: the exact shell command that produces logs
 
-Run the provided shell command in the current repository and pipe its combined output into `ctx prune logs`.
+`$ARGUMENTS` must be a real shell command such as `npm test -- --grep "refresh"` or `pytest -k auth -q`.
+Do not treat `$ARGUMENTS` as a topic, label, or search phrase.
+If `$ARGUMENTS` does not look runnable, stop and tell the user to provide the exact shell command to execute.
+
+Run the provided shell command in the current repository and pipe its combined output into `ctx prune logs --max-lines 50`.
 Then show the pruned output and explain the highest-signal root cause lines."#,
         },
         HostActionTemplate {
@@ -480,6 +489,8 @@ Arguments:
 
 If no arguments are provided, run `ctx memory bootstrap` so CTX scans common files such as:
 - `AGENTS.md`
+- `CLAUDE.md`
+- `CODEX.md`
 - `.github/copilot-instructions.md`
 
 Then show how many files and directives were imported."#,

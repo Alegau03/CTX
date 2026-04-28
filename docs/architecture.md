@@ -30,7 +30,7 @@ CTX is an OpenCode-first local context runtime. It does not replace the host age
 
 `ctx opencode install` does three things:
 
-- registers `ctx --repo-root <repo> mcp stdio` as a local OpenCode MCP server
+- registers the current `ctx` binary path plus `--repo-root <repo> mcp stdio` as a local OpenCode MCP server
 - generates `/ctx-*` command files under `.opencode/commands/`
 - adds host-first instructions that tell OpenCode to prefer CTX graph/memory/retrieval before broad file dumping
 
@@ -38,7 +38,7 @@ Generated OpenCode commands do not pin a model or agent.
 
 ## Graph Memory
 
-Graph memory stores project habits as structured directives. Existing markdown files such as `AGENTS.md` and `.github/copilot-instructions.md` can seed the graph, but daily retrieval should query directives by topic instead of reinjecting full markdown files.
+Graph memory stores project habits as structured directives. Existing markdown files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md` can seed the graph, but daily retrieval should query directives by topic instead of reinjecting full markdown files.
 
 ## Security Boundary
 

@@ -15,10 +15,11 @@ Make CTX live inside OpenCode so the user can keep using OpenCode normally while
 The generated config registers CTX as a local MCP server launched with:
 
 ```bash
-ctx --repo-root <repo> mcp stdio
+/absolute/path/to/ctx --repo-root <repo> mcp stdio
 ```
 
 The generated commands expose the current CTX feature surface as `/ctx-*` commands inside OpenCode.
+The bootstrap and graph-memory flow still support compatibility seed files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
 
 Users should open `opencode` after bootstrap and keep normal work inside the OpenCode TUI.
 
@@ -46,7 +47,7 @@ The OpenCode integration covers:
 
 - setup: `/ctx`, `/ctx-help`, `/ctx-doctor`, `/ctx-init`, `/ctx-index`, `/ctx-reindex`
 - context: `/ctx-pack`, `/ctx-ask`, `/ctx-hook`, `/ctx-explain`, `/ctx-retrieve`, `/ctx-graph-query`
-- pruning: `/ctx-prune-logs`, `/ctx-prune-diff`
+- pruning: `/ctx-prune-logs <shell command>`, `/ctx-prune-diff`
 - memory: `/ctx-memory-bootstrap`, `/ctx-memory-import`, `/ctx-memory-search`, `/ctx-memory-list`, `/ctx-memory-get`, `/ctx-memory-set`, `/ctx-memory-delete`, `/ctx-memory-export`
 - benchmarks: `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
 - MCP/bootstrap: `/ctx-mcp-stdio`, `/ctx-mcp-serve`, `/ctx-mcp-config-opencode`, `/ctx-opencode-install`

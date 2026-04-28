@@ -31,7 +31,7 @@ Inside OpenCode, run:
 /ctx-memory-search auth
 /ctx-retrieve refresh route
 /ctx-pack fix refresh token bug
-/ctx-prune-logs refresh token
+/ctx-prune-logs npm test -- --grep "refresh"
 /ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json
 ```
 
@@ -40,7 +40,7 @@ Inside OpenCode, run:
 - `/ctx` shows the categorized command center.
 - OpenCode sees CTX commands from `.opencode/commands/`.
 - `opencode.json` registers CTX as a local MCP server.
-- graph memory imports `AGENTS.md` and Copilot instructions.
+- graph memory imports `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions when present.
 - memory search returns relevant directives only.
 - pack output includes graph and memory context instead of a giant markdown dump.
 - benchmark reports regenerate successfully.

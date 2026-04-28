@@ -79,6 +79,7 @@ Expected result:
 - `opencode.json` includes a local CTX MCP server
 - `.opencode/commands/*.md` exists
 - `.opencode/instructions/ctx-host-first.md` exists
+- optional compatibility rule files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md` can later be imported into graph memory with `/ctx-memory-bootstrap`
 
 Then open OpenCode:
 

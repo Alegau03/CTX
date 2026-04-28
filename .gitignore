@@ -2,4 +2,5 @@
 /dist
 /.ctx
 **/.ctx/
+/demo/fixtures/opencode-auth-lab/opencode.json
 .DS_Store

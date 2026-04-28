@@ -1324,6 +1324,8 @@ fn load_memory_context(
 fn default_memory_markdown_paths(repo_root: &Path) -> Vec<PathBuf> {
     vec![
         repo_root.join("AGENTS.md"),
+        repo_root.join("CLAUDE.md"),
+        repo_root.join("CODEX.md"),
         repo_root.join(".github/copilot-instructions.md"),
     ]
 }

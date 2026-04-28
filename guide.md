@@ -145,13 +145,17 @@ ctx memory bootstrap
 Default scanned files:
 
 - `AGENTS.md`
+- `CLAUDE.md`
+- `CODEX.md`
 - `.github/copilot-instructions.md`
 
 Expected output shape:
 
 ```text
-imported_files=2 imported_directives=19
+imported_files=4 imported_directives=23
 - /repo/AGENTS.md => 18 directives
+- /repo/CLAUDE.md => 2 directives
+- /repo/CODEX.md => 2 directives
 - /repo/.github/copilot-instructions.md => 1 directives
 ```
 
@@ -340,13 +344,13 @@ This prints compact context directly. It is useful for debugging CTX itself, but
 Inside OpenCode:
 
 ```text
-/ctx-prune-logs auth failure
+/ctx-prune-logs npm test -- --grep "refresh"
 ```
 
 CLI pipe equivalent:
 
 ```bash
-pytest -q 2>&1 | ctx prune logs
+npm test -- --grep "refresh" 2>&1 | ctx prune logs --max-lines 50
 ```
 
 Expected behavior:
@@ -354,6 +358,7 @@ Expected behavior:
 - repeated success/noise lines are removed
 - failing assertions and stack frames are preserved
 - parser-specific diagnostics are kept when recognized
+- if you only provide a topic instead of a runnable shell command, CTX should ask for the exact command instead of guessing
 
 ### Prune Diffs
 
@@ -513,7 +518,7 @@ Then inside OpenCode:
 | `/ctx-explain <task>` | `ctx explain <task>` | Explains likely intent and relevant context |
 | `/ctx-retrieve <query>` | `ctx retrieve <query>` | Hybrid retrieval over graph/snippets/semantic ranking |
 | `/ctx-graph-query <query>` | `ctx graph query <query>` | Searches graph paths and indexed context |
-| `/ctx-prune-logs <topic>` | `ctx prune logs` | Compacts noisy logs |
+| `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs |
 | `/ctx-prune-diff <topic>` | `ctx prune diff --query <topic>` | Compacts diffs around relevant hunks |
 | `/ctx-memory-bootstrap` | `ctx memory bootstrap` | Imports conventional markdown rules into graph memory |
 | `/ctx-memory-import <file>` | `ctx memory import --from <file>` | Imports one markdown file |

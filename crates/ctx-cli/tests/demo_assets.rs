@@ -33,7 +33,12 @@ fn demo_fixture_contains_graph_relevant_source_and_test_files() {
 #[test]
 fn demo_fixture_contains_agents_style_memory_seed_files() {
     let root = repo_root().join("demo/fixtures/opencode-auth-lab");
-    for path in ["AGENTS.md", ".github/copilot-instructions.md"] {
+    for path in [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        ".github/copilot-instructions.md",
+    ] {
         assert!(root.join(path).exists(), "missing {path}");
     }
 }

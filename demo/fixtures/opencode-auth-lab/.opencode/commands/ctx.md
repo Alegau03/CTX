@@ -39,7 +39,7 @@ Then present this menu in English using short sections, aligned bullets, and cle
 - `/ctx-memory-export <file>`
 
 ## Debug
-- `/ctx-prune-logs <topic>`
+- `/ctx-prune-logs <shell command>`
 - `/ctx-prune-diff <topic>`
 - `/ctx-hook <task>`
 

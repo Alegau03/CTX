@@ -22,6 +22,7 @@ The target user experience is:
 - Do not reintroduce `ctx wrap`, `ctx opencode run`, or host-launcher style commands.
 - CTX must not override host model/provider selection by default.
 - Graph memory should replace repeated full markdown rereads when possible.
+- Compatibility markdown files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions should remain valid graph-memory seed inputs.
 
 ## OpenCode Rules
 

@@ -162,6 +162,16 @@ fn memory_bootstrap_imports_default_agents_style_files() {
         "# Team Rules\n- Run targeted tests before completion.\n- Fix root cause before merge.\n",
     )
     .expect("write agents");
+    fs::write(
+        tmp.path().join("CLAUDE.md"),
+        "# Claude Rules\n- Keep route, session, and token semantics aligned.\n",
+    )
+    .expect("write claude");
+    fs::write(
+        tmp.path().join("CODEX.md"),
+        "# Codex Rules\n- Preserve strong assertions in refresh token tests.\n",
+    )
+    .expect("write codex");
     fs::create_dir_all(tmp.path().join(".github")).expect("create .github");
     fs::write(
         tmp.path().join(".github/copilot-instructions.md"),
@@ -172,13 +182,25 @@ fn memory_bootstrap_imports_default_agents_style_files() {
     let report = run_memory_bootstrap_markdown(tmp.path(), &[], "project", "markdown")
         .expect("bootstrap markdown");
 
-    assert_eq!(report.imported_files, 2);
-    assert!(report.imported_directives >= 3);
+    assert_eq!(report.imported_files, 4);
+    assert!(report.imported_directives >= 5);
     assert!(
         report
             .reports
             .iter()
             .any(|item| item.markdown_path.ends_with("AGENTS.md"))
+    );
+    assert!(
+        report
+            .reports
+            .iter()
+            .any(|item| item.markdown_path.ends_with("CLAUDE.md"))
+    );
+    assert!(
+        report
+            .reports
+            .iter()
+            .any(|item| item.markdown_path.ends_with("CODEX.md"))
     );
     assert!(report.reports.iter().any(|item| {
         item.markdown_path
@@ -190,6 +212,15 @@ fn memory_bootstrap_imports_default_agents_style_files() {
         directives
             .iter()
             .any(|item| item.body.contains("Run targeted tests before completion"))
+    );
+    assert!(directives.iter().any(|item| {
+        item.body
+            .contains("Keep route, session, and token semantics aligned")
+    }));
+    assert!(
+        directives
+            .iter()
+            .any(|item| item.body.contains("Preserve strong assertions"))
     );
     assert!(
         directives
