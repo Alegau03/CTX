@@ -13,7 +13,7 @@ CTX helps OpenCode work with less prompt noise by turning project rules, code st
 - [OpenCode-First Usage](#opencode-first-usage)
 - [What Works Today](#what-works-today)
 - [How It Works](#how-it-works)
-- [Demo And Screenshots](#demo-and-screenshots)
+- [Video Demo](#demo-and-screenshots)
 - [Security](#security)
 - [Documentation](#documentation)
 - [Repository Layout](#repository-layout)
@@ -161,8 +161,7 @@ Graph Memory is CTX's structured replacement for repeatedly loading full project
 | Automated smoke | `scripts/demo/opencode-auth-lab-smoke.sh` |
 | MCP smoke | `scripts/demo/opencode-auth-lab-mcp-smoke.sh` |
 | Benchmark smoke | `scripts/demo/opencode-auth-lab-benchmark.sh` |
-| Screenshots | To be added under `docs/assets/` after manual OpenCode validation |
-| Demo video | [Watch the OpenCode demo video](docs/assets/opencode-demo.mp4) |
+| Demo video | [Watch the OpenCode demo video](https://youtu.be/gFwGb7sCzKI) |
 
 Demo Video on OpenCode on a example project:
 
