@@ -76,7 +76,12 @@ External validation completed:
 
 ## OpenCode-First Usage
 
-Install from the latest [GitHub Release](https://github.com/Alegau03/CTX/releases) for your platform:
+Current release archive support:
+
+- macOS Apple Silicon: GitHub Release archive
+- macOS Intel, Linux, Windows: source install for now
+
+Install the current macOS Apple Silicon release from [GitHub Releases](https://github.com/Alegau03/CTX/releases):
 
 ```bash
 shasum -a 256 -c SHA256SUMS
@@ -84,9 +89,7 @@ tar -xzf ctx-0.1.0-aarch64-apple-darwin.tar.gz
 sudo install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
 ```
 
-Windows release archives use `.zip` and contain `ctx.exe`; full platform-specific install commands live in [docs/install.md](docs/install.md).
-
-If you prefer building from source:
+For macOS Intel, Linux, and Windows, install from source for now:
 
 ```bash
 cargo install --locked --path crates/ctx-cli

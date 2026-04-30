@@ -73,7 +73,7 @@ sudo install -m 0755 ctx-<version>-<target>/ctx /usr/local/bin/ctx
 ctx doctor
 ```
 
-Windows users should receive the matching `.zip` artifact plus `ctx.exe`.
+If only the macOS Apple Silicon archive is published, point other users to source install until matching release archives are available.
 
 ## Verification
 
@@ -83,7 +83,7 @@ Release artifacts should be verified with:
 scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.tar.gz dist/SHA256SUMS
 ```
 
-For multi-platform releases, publish one artifact per target and keep `SHA256SUMS` alongside all archives.
+For multi-platform releases, publish one artifact per target and keep `SHA256SUMS` alongside all archives. If only one target ships, say that explicitly in the release notes.
 
 Final gate:
 
@@ -96,6 +96,6 @@ scripts/release/final-qa.sh
 - README and guide are OpenCode-first
 - screenshots/video placeholder exists and demo script is ready
 - benchmark reports are committed and reproducible
-- macOS, Linux, and Windows release archives and SHA256SUMS are generated
+- published artifacts match the platforms promised in README and release notes
 - package verification passes after unpacking
 - Homebrew formula coordinates are updated before tap publication

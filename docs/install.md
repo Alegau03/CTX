@@ -38,14 +38,14 @@ After public releases are published, download the archive for your platform from
 https://github.com/Alegau03/CTX/releases
 ```
 
-Supported archive formats:
+Current release archive availability:
 
 | Platform | Artifact |
 |---|---|
 | macOS Apple Silicon | `ctx-<version>-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | `ctx-<version>-x86_64-apple-darwin.tar.gz` |
-| Linux x64 | `ctx-<version>-x86_64-unknown-linux-gnu.tar.gz` |
-| Windows x64 | `ctx-<version>-x86_64-pc-windows-msvc.zip` |
+| macOS Intel | source install for now |
+| Linux x64 | source install for now |
+| Windows x64 | source install for now |
 
 Verify checksum first:
 
@@ -60,13 +60,12 @@ tar -xzf ctx-0.1.0-<target>.tar.gz
 sudo install -m 0755 ctx-0.1.0-<target>/ctx /usr/local/bin/ctx
 ```
 
-Install on Windows PowerShell:
+For macOS Intel, Linux, and Windows, use source install until matching release archives are published:
 
-```powershell
-Expand-Archive ctx-0.1.0-x86_64-pc-windows-msvc.zip -DestinationPath .
-New-Item -ItemType Directory -Force "$HOME\bin" | Out-Null
-Copy-Item .\ctx-0.1.0-x86_64-pc-windows-msvc\ctx.exe "$HOME\bin\ctx.exe"
-$env:Path += ";$HOME\bin"
+```bash
+git clone https://github.com/Alegau03/CTX.git
+cd CTX
+cargo install --locked --path crates/ctx-cli
 ```
 
 Verify install:
@@ -130,13 +129,12 @@ Useful environment variables:
 
 ```bash
 CTX_RELEASE_RUN_TESTS=0 scripts/release/build.sh
-CTX_TARGET=x86_64-unknown-linux-gnu scripts/release/build.sh
-CTX_TARGET=x86_64-pc-windows-msvc scripts/release/build.sh
-CTX_TARGETS="aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc" scripts/release/build.sh
+rustup target add x86_64-apple-darwin
+CTX_TARGET=x86_64-apple-darwin scripts/release/build.sh
 CTX_DIST_DIR=/tmp/ctx-dist scripts/release/build.sh
 ```
 
-`CTX_TARGETS` builds multiple target-specific archives in one run. Non-host targets may require a matching native runner or a configured cross-compilation toolchain. For reliable public releases, run the same script on the matching OS or CI runner for each target you publish.
+Additional targets such as Linux x64 and Windows x64 require a matching native runner or a configured cross-compilation toolchain. For reliable public releases, run the same script on the matching OS or CI runner for each target you publish.
 
 Release output:
 

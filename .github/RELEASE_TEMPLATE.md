@@ -14,6 +14,7 @@ ctx doctor
 ```
 
 For Windows, download the matching `.zip` release and add `ctx.exe` to your PATH.
+If this release only ships a macOS Apple Silicon archive, direct other platforms to source install.
 
 ## OpenCode Quick Start
 
