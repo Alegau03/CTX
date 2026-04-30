@@ -17,7 +17,6 @@ CTX helps OpenCode work with less prompt noise by turning project rules, code st
 - [Security](#security)
 - [Documentation](#documentation)
 - [Repository Layout](#repository-layout)
-- [Roadmap](#roadmap)
 
 ## What CTX Is
 
@@ -165,11 +164,10 @@ Graph Memory is CTX's structured replacement for repeatedly loading full project
 | Screenshots | To be added under `docs/assets/` after manual OpenCode validation |
 | Demo video | [Watch the OpenCode demo video](docs/assets/opencode-demo.mp4) |
 
-Video:
+Demo Video on OpenCode on a example project:
 
-- [OpenCode demo video](docs/assets/opencode-demo.mp4)
+- [![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://youtu.be/gFwGb7sCzKI)
 
-Planned video flow is documented in [docs/demo-script.md](docs/demo-script.md).
 
 ## Security
 
