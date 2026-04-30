@@ -211,18 +211,4 @@ See [docs/security.md](docs/security.md).
 | `scripts/demo` | Demo smoke, MCP smoke, and benchmark scripts |
 | `scripts/release` | Build, package, verify, and final QA scripts |
 
-## Roadmap
 
-Completed:
-
-- OpenCode-native repo bootstrap
-- OpenCode `/ctx-*` command surface
-- graph memory CRUD, markdown bootstrap, and benchmark proof
-- parser-aware pruning and richer pack inputs
-- local MCP stdio/HTTP runtime
-- release archive build and verification scripts
-
-Remaining before a public GitHub launch:
-
-- add screenshots and recorded demo assets after manual validation
-- add packaged release archives for the supported macOS, Linux, and Windows targets
