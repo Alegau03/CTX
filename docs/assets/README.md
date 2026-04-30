@@ -9,3 +9,4 @@ Planned assets:
 - memory search screenshot
 - benchmark report screenshot
 - final demo video thumbnail or link metadata
+- final exported demo video: `opencode-demo.mp4`

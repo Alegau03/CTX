@@ -536,34 +536,17 @@ Then inside OpenCode:
 
 ## Command Reference
 
+These are the commands most teams will use every day:
+
 | OpenCode command | CLI equivalent | What it does |
 |---|---|---|
-| `/ctx` | `ctx menu` | Shows the CTX command center |
-| `/ctx-help` | `ctx help` | Shows every CTX command and examples |
-| `/ctx-init` | `ctx init` | Initializes `.ctx/` runtime |
-| `/ctx-index` | `ctx index` | Indexes files, symbols, snippets, and graph links |
-| `/ctx-reindex` | `ctx reindex` | Re-indexes selected paths |
-| `/ctx-doctor` | `ctx doctor` | Checks readiness and privacy defaults |
-| `/ctx-pack <task>` | `ctx pack <task>` | Builds compact task context |
-| `/ctx-ask <task>` | `ctx ask <task>` | Prints compact context directly |
-| `/ctx-hook <task>` | `ctx hook <task>` | Produces pre-prompt hook payload |
-| `/ctx-explain <task>` | `ctx explain <task>` | Explains likely intent and relevant context |
-| `/ctx-retrieve <query>` | `ctx retrieve <query>` | Hybrid retrieval over graph/snippets/semantic ranking |
-| `/ctx-graph-query <query>` | `ctx graph query <query>` | Searches graph paths and indexed context |
-| `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs |
-| `/ctx-prune-diff <topic>` | `ctx prune diff --query <topic>` | Compacts diffs around relevant hunks |
-| `/ctx-memory-bootstrap` | `ctx memory bootstrap` | Imports conventional markdown rules into graph memory |
-| `/ctx-memory-import <file>` | `ctx memory import --from <file>` | Imports one markdown file |
-| `/ctx-memory-search <query>` | `ctx memory search <query>` | Finds relevant memory directives |
-| `/ctx-memory-list` | `ctx memory list` | Lists memory directives |
-| `/ctx-memory-get <key>` | `ctx memory get <key>` | Reads one directive |
-| `/ctx-memory-set <key> <body>` | `ctx memory set <key> <body>` | Creates or updates a directive |
-| `/ctx-memory-delete <key>` | `ctx memory delete <key>` | Deletes a directive |
-| `/ctx-memory-export <file>` | `ctx memory export --to <file>` | Exports graph memory to markdown |
-| `/ctx-benchmark-memory-ab ...` | `ctx benchmark memory-ab ...` | Compares markdown vs graph memory |
-| `/ctx-benchmark-memory-suite ...` | `ctx benchmark memory-suite ...` | Runs a benchmark suite and writes reports |
-| `/ctx-stats` | `ctx stats` | Shows latest local token/runtime stats |
-| `/ctx-mcp-stdio` | `ctx mcp stdio` | Shows stdio MCP launch command |
-| `/ctx-mcp-serve` | `ctx mcp serve` | Starts/debugs localhost JSON-RPC server |
-| `/ctx-mcp-config-opencode` | `ctx mcp config opencode` | Prints OpenCode MCP config |
-| `/ctx-opencode-install` | `ctx opencode install` | Refreshes OpenCode integration files |
+| `/ctx` | `ctx menu` | Opens the CTX command center |
+| `/ctx-doctor` | `ctx doctor` | Checks repo readiness and privacy defaults |
+| `/ctx-memory-bootstrap` | `ctx memory bootstrap` | Imports conventional rule files into graph memory |
+| `/ctx-memory-search <query>` | `ctx memory search <query>` | Finds relevant project directives |
+| `/ctx-retrieve <query>` | `ctx retrieve <query>` | Retrieves relevant code, symbols, snippets, and memory |
+| `/ctx-pack <task>` | `ctx pack <task>` | Builds a compact task-specific context pack |
+| `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs to the root cause |
+| `/ctx-stats` | `ctx stats` | Shows latest local usage and token-efficiency stats |
+
+For the complete command surface, syntax details, and examples, see [docs/commands.md](docs/commands.md).

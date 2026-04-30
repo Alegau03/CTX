@@ -163,7 +163,11 @@ Graph Memory is CTX's structured replacement for repeatedly loading full project
 | MCP smoke | `scripts/demo/opencode-auth-lab-mcp-smoke.sh` |
 | Benchmark smoke | `scripts/demo/opencode-auth-lab-benchmark.sh` |
 | Screenshots | To be added under `docs/assets/` after manual OpenCode validation |
-| Demo video | To be recorded after final real-repo validation |
+| Demo video | Export final recording to `docs/assets/opencode-demo.mp4` and link it here |
+
+Video placeholder:
+
+- `docs/assets/opencode-demo.mp4`
 
 Planned video flow is documented in [docs/demo-script.md](docs/demo-script.md).
 
@@ -184,6 +188,7 @@ See [docs/security.md](docs/security.md).
 | File | Purpose |
 |---|---|
 | [guide.md](guide.md) | Full OpenCode usage guide, command reference, examples, expected outputs |
+| [docs/commands.md](docs/commands.md) | Complete CTX command syntax and explanations |
 | [docs/install.md](docs/install.md) | Install paths, PATH notes, release archive verification |
 | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) | End-to-end fixture validation |
 | [docs/demo-script.md](docs/demo-script.md) | Recording/demo sequence |
@@ -210,5 +215,4 @@ See [docs/security.md](docs/security.md).
 | `demo/fixtures/opencode-auth-lab` | Realistic fixture project for smoke tests and benchmark proof |
 | `scripts/demo` | Demo smoke, MCP smoke, and benchmark scripts |
 | `scripts/release` | Build, package, verify, and final QA scripts |
-
 
