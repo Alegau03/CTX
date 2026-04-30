@@ -10,5 +10,5 @@ Arguments:
 - `$3`: optional limit
 - `$4`: optional title
 
-Run the matching `ctx memory export` command.
+Run the matching `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' memory export` command.
 Then confirm the output file path and the number of exported directives.

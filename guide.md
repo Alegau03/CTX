@@ -111,6 +111,7 @@ Expected behavior:
 
 - OpenCode shows the CTX Command Center.
 - The menu is organized by setup, context, memory, debug, benchmark, and MCP.
+- It reports repository status from `ctx menu`, not from a manual repo scan.
 - It recommends the best next CTX command for the current repo state.
 
 Useful first commands:
@@ -123,6 +124,16 @@ Useful first commands:
 /ctx-retrieve auth refresh token
 /ctx-pack fix failing auth test
 ```
+
+Expected `doctor` shape after `ctx init` + `ctx index`:
+
+```text
+indexed_files: <n>
+ready: true
+next: ctx memory bootstrap
+```
+
+`ready: true` means CTX is operational. `next:` is then the recommended workflow step, not a blocker.
 
 ## Graph Memory Workflow
 
@@ -152,11 +163,11 @@ Default scanned files:
 Expected output shape:
 
 ```text
-imported_files=4 imported_directives=23
-- /repo/AGENTS.md => 18 directives
-- /repo/CLAUDE.md => 2 directives
-- /repo/CODEX.md => 2 directives
-- /repo/.github/copilot-instructions.md => 1 directives
+imported_files=4 imported_directives=27
+- /repo/AGENTS.md => 13 directives
+- /repo/CLAUDE.md => 6 directives
+- /repo/CODEX.md => 6 directives
+- /repo/.github/copilot-instructions.md => 2 directives
 ```
 
 ### Import One File Manually
@@ -210,7 +221,7 @@ Why this saves tokens:
 
 - markdown flow sends the whole instruction file repeatedly
 - graph flow retrieves only the directives related to the current task
-- the included fixture currently shows `75.81%` fewer rule tokens for graph memory than the full markdown source
+- the included fixture currently shows `56.72%` fewer rule tokens for graph memory than the full markdown source while keeping `markdown=1.00` and `graph=1.00` query coverage
 
 ### Add Or Update A Directive
 
@@ -344,13 +355,13 @@ This prints compact context directly. It is useful for debugging CTX itself, but
 Inside OpenCode:
 
 ```text
-/ctx-prune-logs npm test -- --grep "refresh"
+/ctx-prune-logs npm run test:auth
 ```
 
 CLI pipe equivalent:
 
 ```bash
-npm test -- --grep "refresh" 2>&1 | ctx prune logs --max-lines 50
+npm run test:auth 2>&1 | ctx prune logs --max-lines 50
 ```
 
 Expected behavior:
@@ -358,6 +369,7 @@ Expected behavior:
 - repeated success/noise lines are removed
 - failing assertions and stack frames are preserved
 - parser-specific diagnostics are kept when recognized
+- the fixture auth failure stays readable as `expected 'token:refresh:user-1' to contain 'rotated:user-1'`
 - if you only provide a topic instead of a runnable shell command, CTX should ask for the exact command instead of guessing
 
 ### Prune Diffs
@@ -424,8 +436,13 @@ ctx benchmark memory-suite \
 Expected output:
 
 ```text
-wrote benchmarks/report.md
-wrote benchmarks/report.json
+title: CTX Demo Memory Benchmark
+case_count: 1
+avg_token_reduction_pct: 56.72
+avg_query_coverage markdown=1.00 graph=1.00
+quality_wins markdown=0 graph=1 ties=0
+report_markdown_path: benchmarks/report.md
+json_output_path: benchmarks/report.json
 ```
 
 ## MCP
@@ -446,10 +463,23 @@ Expected shape:
     "ctx": {
       "type": "local",
       "enabled": true,
-      "command": ["ctx", "--repo-root", "/repo", "mcp", "stdio"]
+      "command": ["/absolute/path/to/ctx", "--repo-root", "/repo", "mcp", "stdio"]
     }
   }
 }
+```
+
+Validate the OpenCode MCP handshake directly:
+
+```bash
+opencode mcp list --print-logs --log-level DEBUG --pure
+```
+
+Expected output:
+
+```text
+ctx connected
+toolCount=13
 ```
 
 Low-level stdio mode:
@@ -488,6 +518,7 @@ ctx --repo-root demo/fixtures/opencode-auth-lab init
 ctx --repo-root demo/fixtures/opencode-auth-lab index
 ctx --repo-root demo/fixtures/opencode-auth-lab opencode install
 cd demo/fixtures/opencode-auth-lab
+npm install
 opencode
 ```
 
@@ -498,6 +529,7 @@ Then inside OpenCode:
 /ctx-memory-bootstrap
 /ctx-memory-search auth root cause
 /ctx-retrieve refresh token auth failure
+/ctx-prune-logs npm run test:auth
 /ctx-pack fix refresh token rotation
 /ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json
 ```
@@ -506,7 +538,7 @@ Then inside OpenCode:
 
 | OpenCode command | CLI equivalent | What it does |
 |---|---|---|
-| `/ctx` | `ctx doctor` plus menu guidance | Shows the CTX command center |
+| `/ctx` | `ctx menu` | Shows the CTX command center |
 | `/ctx-help` | `ctx help` | Shows every CTX command and examples |
 | `/ctx-init` | `ctx init` | Initializes `.ctx/` runtime |
 | `/ctx-index` | `ctx index` | Indexes files, symbols, snippets, and graph links |

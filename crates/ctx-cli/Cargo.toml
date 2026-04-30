@@ -14,6 +14,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 ctx-core = { path = "../ctx-core" }
+ctx-graph = { path = "../ctx-graph" }
 ctx-intake = { path = "../ctx-intake" }
 ctx-hooks = { path = "../ctx-hooks" }
 ctx-mcp = { path = "../ctx-mcp" }

@@ -2,58 +2,12 @@
 description: Menu | Open the CTX command center and quickstart
 ---
 
-Show a clean, terminal-friendly **CTX Command Center** for the current repository.
+Run the deterministic CTX menu command below and present its output as-is.
 
-Start with the current repository status:
-!`ctx doctor`
+Rules:
+- do not inspect files manually
+- do not call subagents
+- do not infer repository state from anything except the command output
+- do not rewrite slash commands into another format
 
-Then present this menu in English using short sections, aligned bullets, and clear next steps.
-
-# CTX Command Center
-
-## Recommended Start
-- `/ctx-doctor` - check repo health and next step
-- `/ctx-index` - build or refresh the graph
-- `/ctx-memory-bootstrap` - import AGENTS-style project rules
-- `/ctx-pack <task>` - build the smallest useful context pack
-
-## Setup
-- `/ctx-init`
-- `/ctx-index`
-- `/ctx-reindex`
-- `/ctx-opencode-install`
-
-## Context
-- `/ctx-pack <task>`
-- `/ctx-ask <task>`
-- `/ctx-retrieve <query>`
-- `/ctx-graph-query <query>`
-- `/ctx-explain <task>`
-
-## Memory
-- `/ctx-memory-bootstrap`
-- `/ctx-memory-search <topic>`
-- `/ctx-memory-list`
-- `/ctx-memory-get <key>`
-- `/ctx-memory-set <key> <body>`
-- `/ctx-memory-export <file>`
-
-## Debug
-- `/ctx-prune-logs <shell command>`
-- `/ctx-prune-diff <topic>`
-- `/ctx-hook <task>`
-
-## Benchmark
-- `/ctx-benchmark-memory-ab ...`
-- `/ctx-benchmark-memory-suite ...`
-- `/ctx-stats`
-
-## MCP
-- `/ctx-mcp-stdio`
-- `/ctx-mcp-serve`
-- `/ctx-mcp-config-opencode`
-
-End with:
-1. the single best next command for the current repo state
-2. one copy-paste example
-3. a one-line explanation of why that command should come next
+!`'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' menu`

@@ -10,7 +10,11 @@ Arguments:
 - `$3`: optional JSON report path
 
 Run:
-- `ctx benchmark memory-suite --spec <spec> --report-out <report>`
+- `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' benchmark memory-suite --spec <spec> --report-out <report>`
 - include `--json-out <json>` when structured output is also needed
+
+Rules:
+- run only the exact CTX benchmark command
+- do not infer KPIs from source files manually
 
 Then summarize the suite KPIs and point to the generated report files.

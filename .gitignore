@@ -3,4 +3,9 @@
 /.ctx
 **/.ctx/
 /demo/fixtures/opencode-auth-lab/opencode.json
+/demo/fixtures/opencode-auth-lab/node_modules/
+/demo/fixtures/opencode-auth-lab/benchmark-report.md
+/demo/fixtures/opencode-auth-lab/benchmark-report.json
+/demo/fixtures/opencode-auth-lab/opencode *.json
+/docs/superpowers/
 .DS_Store

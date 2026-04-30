@@ -2,10 +2,19 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FIXTURE="${CTX_DEMO_FIXTURE:-$ROOT_DIR/demo/fixtures/opencode-auth-lab}"
+SOURCE_FIXTURE="$ROOT_DIR/demo/fixtures/opencode-auth-lab"
 CTX_BIN="${1:-$ROOT_DIR/target/debug/ctx}"
 if [[ "$CTX_BIN" != /* ]]; then
   CTX_BIN="$ROOT_DIR/$CTX_BIN"
+fi
+
+if [[ -n "${CTX_DEMO_FIXTURE:-}" ]]; then
+  FIXTURE="$CTX_DEMO_FIXTURE"
+else
+  TMP_FIXTURE_ROOT="$(mktemp -d)"
+  trap 'rm -rf "$TMP_FIXTURE_ROOT"' EXIT
+  FIXTURE="$TMP_FIXTURE_ROOT/opencode-auth-lab"
+  cp -R "$SOURCE_FIXTURE" "$FIXTURE"
 fi
 
 rm -rf "$FIXTURE/.ctx"

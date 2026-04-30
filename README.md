@@ -44,11 +44,12 @@ The committed demo benchmark compares a traditional markdown-rule flow against C
 | Metric | Result |
 |---|---:|
 | Markdown rule tokens | `744` |
-| Graph memory tokens | `180` |
-| Token reduction | `75.81%` |
+| Graph memory tokens | `322` |
+| Token reduction | `56.72%` |
+| Query coverage | `markdown=1.00`, `graph=1.00` |
 | Markdown answer success | `33.33%` |
 | Graph memory answer success | `100.00%` |
-| Quality winner | `graph` |
+| Quality wins | `markdown=0`, `graph=1`, `ties=0` |
 
 Reproduce it with:
 
@@ -62,7 +63,16 @@ Evidence files:
 - [benchmark JSON](demo/fixtures/opencode-auth-lab/benchmarks/report.json)
 - [demo walkthrough](docs/demo-walkthrough.md)
 
-The claim is intentionally scoped to the included fixture until broader public benchmark runs are added.
+The core claim is backed by the included fixture, plus a committed public-repository snapshot.
+
+External validation completed:
+
+- bootstrap, indexing, OpenCode asset generation, MCP handshake, and basic retrieval/pack flow were verified on the public `charmbracelet/glow` repository
+- a committed external benchmark snapshot now exists for [agentsmd/agents.md](docs/external-benchmark-agentsmd.md), with:
+  - token reduction `72.62%`
+  - query coverage `markdown=1.00`, `graph=0.89`
+  - success rate `markdown=0.50`, `graph=1.00`
+  - quality wins `markdown=0`, `graph=1`, `ties=0`
 
 ## OpenCode-First Usage
 
@@ -174,7 +184,7 @@ See [docs/security.md](docs/security.md).
 | [docs/security.md](docs/security.md) | Privacy and trust model |
 | [docs/release-playbook.md](docs/release-playbook.md) | Release messaging and checklist |
 | [docs/final-qa.md](docs/final-qa.md) | Final QA gate |
-| [roadmap](docs/superpowers/plans/2026-04-25-final-release-roadmap.md) | Current release roadmap |
+| [docs/external-benchmark-agentsmd.md](docs/external-benchmark-agentsmd.md) | Public external benchmark evidence |
 
 ## Repository Layout
 
@@ -207,6 +217,4 @@ Completed:
 Remaining before a public GitHub launch:
 
 - add screenshots and recorded demo assets after manual validation
-- run the benchmark on at least one real external repository
-- finalize public release coordinates, repository URL, and Homebrew tap metadata
-- polish the first GitHub release notes with reproducible demo evidence
+- replace `Formula/ctx.rb` `sha256` with the final release artifact checksum

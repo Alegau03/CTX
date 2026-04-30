@@ -24,6 +24,8 @@ pub struct McpServerConfig {
 pub struct McpTool {
     pub name: &'static str,
     pub description: &'static str,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,61 +50,151 @@ struct ProjectMapEntry {
     kind: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StdioEnvelope {
+    ContentLength,
+    BareJson,
+}
+
+#[derive(Debug, Clone)]
+struct StdioRpcMessage {
+    body: String,
+    envelope: StdioEnvelope,
+}
+
 pub fn default_tools() -> Vec<McpTool> {
     vec![
         McpTool {
             name: "get_relevant_context",
             description: "Return compact context for current query",
+            input_schema: json_schema(
+                &[
+                    ("query", "string"),
+                    ("budget", "integer"),
+                    ("attach", "string"),
+                ],
+                &["query"],
+            ),
         },
         McpTool {
             name: "project_map",
             description: "Return top-level repository map",
+            input_schema: json_schema(&[("depth", "integer")], &[]),
         },
         McpTool {
             name: "search_symbols",
             description: "Search indexed symbols by keyword",
+            input_schema: json_schema(&[("query", "string")], &["query"]),
         },
         McpTool {
             name: "related_failures",
             description: "Return failures connected to symbols/tasks",
+            input_schema: json_schema(&[("limit", "integer")], &[]),
         },
         McpTool {
             name: "recent_decisions",
             description: "Return recent pruning/decision notes",
+            input_schema: json_schema(&[("limit", "integer")], &[]),
         },
         McpTool {
             name: "get_compact_diff",
             description: "Return query-focused compact diff",
+            input_schema: json_schema(
+                &[
+                    ("input", "string"),
+                    ("query", "string"),
+                    ("max_lines", "integer"),
+                ],
+                &["input"],
+            ),
         },
         McpTool {
             name: "memory_list",
             description: "List graph-backed memory directives",
+            input_schema: json_schema(&[("scope", "string"), ("limit", "integer")], &[]),
         },
         McpTool {
             name: "memory_set",
             description: "Create/update one graph memory directive",
+            input_schema: json_schema(
+                &[
+                    ("key", "string"),
+                    ("body", "string"),
+                    ("scope", "string"),
+                    ("source", "string"),
+                ],
+                &["key", "body"],
+            ),
         },
         McpTool {
             name: "memory_get",
             description: "Get one graph memory directive",
+            input_schema: json_schema(&[("key", "string")], &["key"]),
         },
         McpTool {
             name: "memory_search",
             description: "Search graph memory directives by topic",
+            input_schema: json_schema(
+                &[
+                    ("query", "string"),
+                    ("scope", "string"),
+                    ("limit", "integer"),
+                ],
+                &["query"],
+            ),
         },
         McpTool {
             name: "memory_delete",
             description: "Delete one graph memory directive",
+            input_schema: json_schema(&[("key", "string")], &["key"]),
         },
         McpTool {
             name: "memory_import_markdown",
             description: "Import AGENTS/CLAUDE/CODEX markdown rules into graph memory",
+            input_schema: json_schema(
+                &[
+                    ("path", "string"),
+                    ("scope", "string"),
+                    ("source", "string"),
+                    ("prefix", "string"),
+                ],
+                &["path"],
+            ),
         },
         McpTool {
             name: "memory_bootstrap_markdown",
             description: "Auto-import conventional markdown rule files into graph memory",
+            input_schema: json_schema(
+                &[
+                    ("paths", "array"),
+                    ("scope", "string"),
+                    ("source", "string"),
+                ],
+                &[],
+            ),
         },
     ]
+}
+
+fn json_schema(properties: &[(&str, &str)], required: &[&str]) -> Value {
+    let properties = properties
+        .iter()
+        .map(|(name, kind)| {
+            let schema = if *kind == "array" {
+                json!({"type":"array","items":{"type":"string"}})
+            } else {
+                json!({"type":kind})
+            };
+            ((*name).to_string(), schema)
+        })
+        .collect::<serde_json::Map<String, Value>>();
+
+    json!({
+        "type":"object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": false
+    })
 }
 
 pub fn mcp_banner(port: u16) -> String {
@@ -133,30 +225,47 @@ pub fn serve_stdio(cfg: McpServerConfig) -> Result<()> {
     let mut stdin = io::BufReader::new(stdin.lock());
     let mut stdout = io::stdout();
 
-    while let Some(body) = read_stdio_rpc_message(&mut stdin)? {
-        let response = process_rpc_message(&cfg, &body);
-        write_stdio_rpc_response(&mut stdout, &response)?;
+    serve_stdio_with(&cfg, &mut stdin, &mut stdout)
+}
+
+pub fn serve_stdio_with<R: BufRead, W: Write>(
+    cfg: &McpServerConfig,
+    reader: &mut R,
+    writer: &mut W,
+) -> Result<()> {
+    while let Some(message) = read_stdio_rpc_message(reader)? {
+        if let Some(response) = process_rpc_message(cfg, &message.body) {
+            write_stdio_rpc_response(writer, &response, message.envelope)?;
+        }
     }
 
     Ok(())
 }
 
-pub fn process_rpc_message(cfg: &McpServerConfig, body: &str) -> String {
+pub fn process_rpc_message(cfg: &McpServerConfig, body: &str) -> Option<String> {
     let parsed = serde_json::from_str::<RpcRequest>(body);
     match parsed {
         Ok(rpc) => {
-            let id = rpc.id.unwrap_or(Value::Null);
-            match process_rpc(cfg, &rpc.method, rpc.params.as_ref()) {
-                Ok(result) => rpc_success(id, result).to_string(),
-                Err(err) => rpc_error(id, -32000, &format!("{err:#}")).to_string(),
+            let is_notification = rpc.id.is_none();
+            if is_notification {
+                let _ = process_rpc(cfg, &rpc.method, rpc.params.as_ref());
+                None
+            } else {
+                let id = rpc.id.unwrap_or(Value::Null);
+                match process_rpc(cfg, &rpc.method, rpc.params.as_ref()) {
+                    Ok(result) => Some(rpc_success(id, result).to_string()),
+                    Err(err) => Some(rpc_error(id, -32000, &format!("{err:#}")).to_string()),
+                }
             }
         }
-        Err(err) => rpc_error(
-            Value::Null,
-            -32700,
-            &format!("invalid rpc json body: {err}"),
-        )
-        .to_string(),
+        Err(err) => Some(
+            rpc_error(
+                Value::Null,
+                -32700,
+                &format!("invalid rpc json body: {err}"),
+            )
+            .to_string(),
+        ),
     }
 }
 
@@ -173,10 +282,19 @@ fn handle_http_request(cfg: &McpServerConfig, mut request: Request) -> Result<()
                 .read_to_string(&mut body)
                 .context("failed to read request body")?;
 
-            let response: Value =
-                serde_json::from_str(&process_rpc_message(cfg, &body)).context("rpc response")?;
-
-            respond_json(request, StatusCode(200), response)
+            match process_rpc_message(cfg, &body) {
+                Some(response) => {
+                    let response: Value =
+                        serde_json::from_str(&response).context("rpc response")?;
+                    respond_json(request, StatusCode(200), response)
+                }
+                None => {
+                    let response = Response::empty(StatusCode(204));
+                    request
+                        .respond(response)
+                        .context("failed to send empty rpc response")
+                }
+            }
         }
         _ => {
             let payload = json!({"error":"not found"});
@@ -185,7 +303,7 @@ fn handle_http_request(cfg: &McpServerConfig, mut request: Request) -> Result<()
     }
 }
 
-fn read_stdio_rpc_message<R: BufRead>(reader: &mut R) -> Result<Option<String>> {
+fn read_stdio_rpc_message<R: BufRead>(reader: &mut R) -> Result<Option<StdioRpcMessage>> {
     let mut first_line = String::new();
     loop {
         first_line.clear();
@@ -201,7 +319,10 @@ fn read_stdio_rpc_message<R: BufRead>(reader: &mut R) -> Result<Option<String>> 
     }
 
     if first_line.trim_start().starts_with('{') {
-        return Ok(Some(first_line.trim_end().to_string()));
+        return Ok(Some(StdioRpcMessage {
+            body: first_line.trim_end().to_string(),
+            envelope: StdioEnvelope::BareJson,
+        }));
     }
 
     let mut content_length = None;
@@ -239,17 +360,33 @@ fn read_stdio_rpc_message<R: BufRead>(reader: &mut R) -> Result<Option<String>> 
 
     String::from_utf8(payload)
         .context("stdio rpc body is not valid UTF-8")
-        .map(Some)
+        .map(|body| {
+            Some(StdioRpcMessage {
+                body,
+                envelope: StdioEnvelope::ContentLength,
+            })
+        })
 }
 
-fn write_stdio_rpc_response<W: Write>(writer: &mut W, response: &str) -> Result<()> {
-    write!(
-        writer,
-        "Content-Length: {}\r\n\r\n{}",
-        response.len(),
-        response
-    )
-    .context("failed to write stdio rpc response")?;
+fn write_stdio_rpc_response<W: Write>(
+    writer: &mut W,
+    response: &str,
+    envelope: StdioEnvelope,
+) -> Result<()> {
+    match envelope {
+        StdioEnvelope::ContentLength => {
+            write!(
+                writer,
+                "Content-Length: {}\r\n\r\n{}",
+                response.len(),
+                response
+            )
+            .context("failed to write stdio rpc response")?;
+        }
+        StdioEnvelope::BareJson => {
+            writeln!(writer, "{response}").context("failed to write stdio rpc response")?;
+        }
+    }
     writer
         .flush()
         .context("failed to flush stdio rpc response")?;
@@ -259,13 +396,14 @@ fn write_stdio_rpc_response<W: Write>(writer: &mut W, response: &str) -> Result<
 fn process_rpc(cfg: &McpServerConfig, method: &str, params: Option<&Value>) -> Result<Value> {
     match method {
         "initialize" => Ok(json!({
-            "protocolVersion":"2025-03-26",
+            "protocolVersion": initialize_protocol_version(params),
             "serverInfo":{"name":"ctx-mcp","version":"0.1.0"},
             "capabilities":{
                 "tools":{"listChanged":false},
                 "resources":{"subscribe":false,"listChanged":false}
             }
         })),
+        "notifications/initialized" => Ok(json!({})),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": default_tools()})),
         "resources/list" => Ok(json!({"resources": default_resources()})),
@@ -273,6 +411,15 @@ fn process_rpc(cfg: &McpServerConfig, method: &str, params: Option<&Value>) -> R
         "tools/call" => tools_call(cfg, params),
         _ => bail!("unknown rpc method: {method}"),
     }
+}
+
+fn initialize_protocol_version(params: Option<&Value>) -> String {
+    params
+        .and_then(Value::as_object)
+        .and_then(|items| items.get("protocolVersion"))
+        .and_then(Value::as_str)
+        .unwrap_or("2025-03-26")
+        .to_string()
 }
 
 fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {

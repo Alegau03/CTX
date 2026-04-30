@@ -19,3 +19,23 @@ The intended validation story is:
 5. prune noisy Vitest logs
 6. build a compact pack for the fix task
 7. compare graph memory against markdown memory with reproducible benchmark reports
+
+## Log Demo Setup
+
+Install the fixture dependencies before testing `/ctx-prune-logs` inside OpenCode:
+
+```bash
+npm install
+```
+
+Then use:
+
+```text
+/ctx-prune-logs npm run test:auth
+```
+
+Expected outcome:
+
+- no `vitest: command not found`
+- pruned auth failure output instead of raw shell noise
+- readable root cause from the refresh-route assertion failure

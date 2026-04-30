@@ -25,10 +25,12 @@ pub fn render_mcp_config(repo_root: &Path, client: &str, port: u16) -> Result<St
 pub fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
     let config_path = upsert_opencode_project_config(repo_root)?;
     let commands_dir = repo_root.join(".opencode/commands");
+    let ctx_binary = current_ctx_binary();
     write_markdown_assets(
         &commands_dir,
+        repo_root,
+        &ctx_binary,
         shared_action_templates(),
-        render_opencode_command_file,
     )?;
 
     let instructions_dir = repo_root.join(".opencode/instructions");
@@ -109,14 +111,23 @@ fn upsert_opencode_project_config(repo_root: &Path) -> Result<PathBuf> {
 
 fn write_markdown_assets(
     root: &Path,
+    repo_root: &Path,
+    ctx_binary: &str,
     templates: &[HostActionTemplate],
-    renderer: fn(&str, &str) -> String,
 ) -> Result<()> {
     fs::create_dir_all(root).with_context(|| format!("failed to create {}", root.display()))?;
     for template in templates {
         let path = root.join(format!("{}.md", template.slug));
-        fs::write(&path, renderer(template.description, template.body))
-            .with_context(|| format!("failed to write {}", path.display()))?;
+        fs::write(
+            &path,
+            render_opencode_command_file(
+                template.description,
+                template.body,
+                repo_root,
+                ctx_binary,
+            ),
+        )
+        .with_context(|| format!("failed to write {}", path.display()))?;
     }
     Ok(())
 }
@@ -129,8 +140,17 @@ fn asset_file_paths(root: &Path, templates: &[HostActionTemplate], extension: &s
         .collect()
 }
 
-fn render_opencode_command_file(description: &str, template: &str) -> String {
-    format!("---\ndescription: {description}\n---\n\n{template}\n")
+fn render_opencode_command_file(
+    description: &str,
+    template: &str,
+    repo_root: &Path,
+    ctx_binary: &str,
+) -> String {
+    let rendered = template
+        .replace("{{CTX_CMD}}", &ctx_command_string(repo_root, ctx_binary))
+        .replace("{{CTX_BIN}}", &shell_quote(ctx_binary))
+        .replace("{{REPO_ROOT}}", &shell_quote(&repo_root.to_string_lossy()));
+    format!("---\ndescription: {description}\n---\n\n{rendered}\n")
 }
 
 fn merge_instruction_entries(root: &mut Map<String, Value>, entries: &[&str]) -> Result<()> {
@@ -164,10 +184,7 @@ fn opencode_project_config_value(repo_root: &Path) -> Value {
 }
 
 fn opencode_ctx_mcp_server_value(repo_root: &Path) -> Value {
-    let binary = std::env::current_exe()
-        .ok()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "ctx".to_string());
+    let binary = current_ctx_binary();
 
     json!({
         "type": "local",
@@ -182,6 +199,26 @@ fn opencode_ctx_mcp_server_value(repo_root: &Path) -> Value {
     })
 }
 
+fn current_ctx_binary() -> String {
+    std::env::current_exe()
+        .ok()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "ctx".to_string())
+}
+
+fn ctx_command_string(repo_root: &Path, ctx_binary: &str) -> String {
+    format!(
+        "{} --repo-root {}",
+        shell_quote(ctx_binary),
+        shell_quote(&repo_root.to_string_lossy())
+    )
+}
+
+fn shell_quote(value: &str) -> String {
+    let escaped = value.replace('\'', "'\"'\"'");
+    format!("'{escaped}'")
+}
+
 #[derive(Clone, Copy)]
 struct HostActionTemplate {
     slug: &'static str,
@@ -194,68 +231,22 @@ fn shared_action_templates() -> &'static [HostActionTemplate] {
         HostActionTemplate {
             slug: "ctx",
             description: "Menu | Open the CTX command center and quickstart",
-            body: r#"Show a clean, terminal-friendly **CTX Command Center** for the current repository.
+            body: r#"Run the deterministic CTX menu command below and present its output as-is.
 
-Start with the current repository status:
-!`ctx doctor`
+Rules:
+- do not inspect files manually
+- do not call subagents
+- do not infer repository state from anything except the command output
+- do not rewrite slash commands into another format
 
-Then present this menu in English using short sections, aligned bullets, and clear next steps.
-
-# CTX Command Center
-
-## Recommended Start
-- `/ctx-doctor` - check repo health and next step
-- `/ctx-index` - build or refresh the graph
-- `/ctx-memory-bootstrap` - import AGENTS-style project rules
-- `/ctx-pack <task>` - build the smallest useful context pack
-
-## Setup
-- `/ctx-init`
-- `/ctx-index`
-- `/ctx-reindex`
-- `/ctx-opencode-install`
-
-## Context
-- `/ctx-pack <task>`
-- `/ctx-ask <task>`
-- `/ctx-retrieve <query>`
-- `/ctx-graph-query <query>`
-- `/ctx-explain <task>`
-
-## Memory
-- `/ctx-memory-bootstrap`
-- `/ctx-memory-search <topic>`
-- `/ctx-memory-list`
-- `/ctx-memory-get <key>`
-- `/ctx-memory-set <key> <body>`
-- `/ctx-memory-export <file>`
-
-## Debug
-- `/ctx-prune-logs <shell command>`
-- `/ctx-prune-diff <topic>`
-- `/ctx-hook <task>`
-
-## Benchmark
-- `/ctx-benchmark-memory-ab ...`
-- `/ctx-benchmark-memory-suite ...`
-- `/ctx-stats`
-
-## MCP
-- `/ctx-mcp-stdio`
-- `/ctx-mcp-serve`
-- `/ctx-mcp-config-opencode`
-
-End with:
-1. the single best next command for the current repo state
-2. one copy-paste example
-3. a one-line explanation of why that command should come next"#,
+!`{{CTX_CMD}} menu`"#,
         },
         HostActionTemplate {
             slug: "ctx-help",
             description: "Menu | Show the full CTX CLI command guide",
             body: r#"Current CTX command guide:
 
-!`ctx help`
+!`{{CTX_CMD}} help`
 
 Summarize the most relevant next CTX commands for the current task."#,
         },
@@ -264,7 +255,8 @@ Summarize the most relevant next CTX commands for the current task."#,
             description: "Setup | Initialize CTX runtime for this repository",
             body: r#"Initialize CTX in the current repository.
 
-Run `ctx init`.
+!`{{CTX_CMD}} init`
+
 Then show the output and tell the user the next recommended command."#,
         },
         HostActionTemplate {
@@ -275,8 +267,15 @@ Then show the output and tell the user the next recommended command."#,
 Arguments:
 - `$ARGUMENTS`: optional path arguments
 
-Run `ctx index $ARGUMENTS` in the current repository root.
-Then show the output and explain what was indexed."#,
+!`{{CTX_CMD}} index $ARGUMENTS`
+
+Rules:
+- run only the exact CTX command above
+- do not glob files or inspect the filesystem manually
+- do not infer indexed files from repository contents
+
+Then show the output first.
+If `indexed_files:` is present, explain that field in one short sentence only."#,
         },
         HostActionTemplate {
             slug: "ctx-reindex",
@@ -286,7 +285,8 @@ Then show the output and explain what was indexed."#,
 Arguments:
 - `$ARGUMENTS`: optional path arguments
 
-Run `ctx reindex $ARGUMENTS`.
+!`{{CTX_CMD}} reindex $ARGUMENTS`
+
 Then show the output and explain what changed."#,
         },
         HostActionTemplate {
@@ -294,7 +294,8 @@ Then show the output and explain what changed."#,
             description: "Setup | Build the CTX graph from this repository",
             body: r#"Build the CTX graph for the current repository.
 
-Run `ctx graph build`.
+!`{{CTX_CMD}} graph build`
+
 Then show the output and explain the result."#,
         },
         HostActionTemplate {
@@ -302,7 +303,8 @@ Then show the output and explain the result."#,
             description: "Setup | Rebuild the CTX graph explicitly",
             body: r#"Rebuild the CTX graph for the current repository.
 
-Run `ctx graph rebuild`.
+!`{{CTX_CMD}} graph rebuild`
+
 Then show the output and explain the result."#,
         },
         HostActionTemplate {
@@ -310,10 +312,14 @@ Then show the output and explain the result."#,
             description: "Setup | Check CTX repo health and next steps",
             body: r#"Current CTX doctor report:
 
-!`ctx doctor`
+!`{{CTX_CMD}} doctor`
 
-Explain whether CTX is ready for this repository.
-If something is missing, give the next exact command to run."#,
+Interpret the report deterministically:
+- if `ready: true`, say CTX is ready; treat `next:` as the recommended workflow step, not missing setup
+- if `ready: false`, say CTX is not ready and print the exact `next:` command
+- print the exact `next:` command verbatim
+- do not inspect files manually
+- do not contradict the `ready:` line"#,
         },
         HostActionTemplate {
             slug: "ctx-pack",
@@ -322,8 +328,11 @@ If something is missing, give the next exact command to run."#,
 
 $ARGUMENTS
 
-Run `ctx pack "$ARGUMENTS"` in the current repository root.
-Show the compact context first, then explain how it should guide the next step."#,
+!`{{CTX_CMD}} pack "$ARGUMENTS" --json`
+
+Print `compact_context` first.
+Then print one compact stats line with `packed_tokens`, `reduction_pct`, and `pack_path`.
+Keep any follow-up explanation to at most one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-retrieve",
@@ -332,8 +341,11 @@ Show the compact context first, then explain how it should guide the next step."
 
 $ARGUMENTS
 
-Run `ctx retrieve "$ARGUMENTS" --limit 8` in the current repository root.
-Show the ranked hits and explain which files or symbols matter most."#,
+!`{{CTX_CMD}} retrieve "$ARGUMENTS" --limit 8 --json`
+
+Start with the useful result immediately.
+Show the top hits in a clean, predictable format using the returned `source`, `score`, `id`, and `reason`.
+Keep any follow-up summary to one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-graph-query",
@@ -342,7 +354,8 @@ Show the ranked hits and explain which files or symbols matter most."#,
 
 $ARGUMENTS
 
-Run `ctx graph query "$ARGUMENTS"` in the current repository root.
+!`{{CTX_CMD}} graph query "$ARGUMENTS"`
+
 Show the graph matches and explain the most relevant relationships."#,
         },
         HostActionTemplate {
@@ -357,8 +370,9 @@ Arguments:
 Do not treat `$ARGUMENTS` as a topic, label, or search phrase.
 If `$ARGUMENTS` does not look runnable, stop and tell the user to provide the exact shell command to execute.
 
-Run the provided shell command in the current repository and pipe its combined output into `ctx prune logs --max-lines 50`.
-Then show the pruned output and explain the highest-signal root cause lines."#,
+Run the provided shell command in the current repository and pipe its combined output into `{{CTX_CMD}} prune logs --max-lines 50`.
+Show the pruned output first.
+Keep any root-cause explanation to one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-prune-diff",
@@ -368,8 +382,9 @@ Then show the pruned output and explain the highest-signal root cause lines."#,
 Arguments:
 - `$ARGUMENTS`: the query to use for diff pruning
 
-Run `git diff | ctx prune diff --query "$ARGUMENTS"` in the current repository.
-Then show the compact diff and explain why the remaining hunks matter."#,
+Run `git diff | {{CTX_CMD}} prune diff --query "$ARGUMENTS"` in the current repository.
+Show the compact diff first.
+Keep any follow-up explanation to one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-ask",
@@ -379,7 +394,8 @@ Then show the compact diff and explain why the remaining hunks matter."#,
 Arguments:
 - `$ARGUMENTS`: the task query
 
-Run `ctx ask "$ARGUMENTS"`.
+!`{{CTX_CMD}} ask "$ARGUMENTS"`
+
 Then show the result and explain how it should guide the next step."#,
         },
         HostActionTemplate {
@@ -390,8 +406,11 @@ Then show the result and explain how it should guide the next step."#,
 Arguments:
 - `$ARGUMENTS`: the task query
 
-Run `ctx hook "$ARGUMENTS"`.
-Then show the generated payload and explain where it should be used."#,
+!`{{CTX_CMD}} hook "$ARGUMENTS" --json`
+
+Print `hook_prompt` first.
+Then print a single compact metadata line with `packed_tokens`, `reduction_pct`, and `pack_path`.
+Keep any usage note to one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-explain",
@@ -401,7 +420,8 @@ Then show the generated payload and explain where it should be used."#,
 Arguments:
 - `$ARGUMENTS`: the task query
 
-Run `ctx explain "$ARGUMENTS"`.
+!`{{CTX_CMD}} explain "$ARGUMENTS"`
+
 Then show the result and summarize the intent classification."#,
         },
         HostActionTemplate {
@@ -416,6 +436,7 @@ Arguments:
 - `$4`: optional source, default `manual`
 
 Run the matching `ctx memory set` command.
+Use `{{CTX_CMD}} memory set ...` as the command prefix.
 Then confirm what was stored and show the exact command used."#,
         },
         HostActionTemplate {
@@ -426,7 +447,8 @@ Then confirm what was stored and show the exact command used."#,
 Argument:
 - `$1`: directive key
 
-Run `ctx memory get "$1"` and show the result.
+!`{{CTX_CMD}} memory get "$1"`
+
 If the directive is missing, say that clearly and suggest the matching CTX memory set action."#,
         },
         HostActionTemplate {
@@ -438,7 +460,7 @@ Arguments:
 - `$1`: optional scope
 - `$2`: optional limit
 
-Run `ctx memory list` with the provided filters.
+Run `{{CTX_CMD}} memory list` with the provided filters.
 Show the directives first, then summarize any patterns you notice."#,
         },
         HostActionTemplate {
@@ -451,8 +473,9 @@ Arguments:
 - `$2`: optional scope
 - `$3`: optional limit
 
-Run the matching `ctx memory search` command.
-Show only the relevant directives and explain why they matter for the task."#,
+Run the matching `{{CTX_CMD}} memory search "$1" --json` command, adding scope and limit only when they were provided.
+Show only the matching directives in a compact, predictable format.
+Do not add extra commentary beyond one short sentence if needed."#,
         },
         HostActionTemplate {
             slug: "ctx-memory-delete",
@@ -462,7 +485,7 @@ Show only the relevant directives and explain why they matter for the task."#,
 Argument:
 - `$1`: directive key
 
-Run `ctx memory delete "$1"`.
+Run `{{CTX_CMD}} memory delete "$1"`.
 Then confirm whether the directive was deleted or not found."#,
         },
         HostActionTemplate {
@@ -476,7 +499,7 @@ Arguments:
 - `$3`: optional source, default `markdown`
 - `$4`: optional prefix
 
-Run the matching `ctx memory import` command.
+Run the matching `{{CTX_CMD}} memory import` command.
 Then report how many directives were imported and from which file."#,
         },
         HostActionTemplate {
@@ -487,11 +510,15 @@ Then report how many directives were imported and from which file."#,
 Arguments:
 - `$ARGUMENTS`: optional explicit file paths
 
-If no arguments are provided, run `ctx memory bootstrap` so CTX scans common files such as:
+If no arguments are provided, run `{{CTX_CMD}} memory bootstrap` so CTX scans common files such as:
 - `AGENTS.md`
 - `CLAUDE.md`
 - `CODEX.md`
 - `.github/copilot-instructions.md`
+
+Rules:
+- run only the exact CTX command
+- do not scan the repository manually to count files or directives
 
 Then show how many files and directives were imported."#,
         },
@@ -506,7 +533,7 @@ Arguments:
 - `$3`: optional limit
 - `$4`: optional title
 
-Run the matching `ctx memory export` command.
+Run the matching `{{CTX_CMD}} memory export` command.
 Then confirm the output file path and the number of exported directives."#,
         },
         HostActionTemplate {
@@ -522,7 +549,7 @@ Arguments:
 - `$5`: optional markdown answer path
 - `$6`: optional graph answer path
 
-Run the matching `ctx benchmark memory-ab` command.
+Run the matching `{{CTX_CMD}} benchmark memory-ab` command.
 Then explain the token delta and which side won on quality if that data is present."#,
         },
         HostActionTemplate {
@@ -536,8 +563,12 @@ Arguments:
 - `$3`: optional JSON report path
 
 Run:
-- `ctx benchmark memory-suite --spec <spec> --report-out <report>`
+- `{{CTX_CMD}} benchmark memory-suite --spec <spec> --report-out <report>`
 - include `--json-out <json>` when structured output is also needed
+
+Rules:
+- run only the exact CTX benchmark command
+- do not infer KPIs from source files manually
 
 Then summarize the suite KPIs and point to the generated report files."#,
         },
@@ -546,16 +577,18 @@ Then summarize the suite KPIs and point to the generated report files."#,
             description: "Benchmark | Show the latest CTX token and runtime stats",
             body: r#"Show the latest local CTX stats for this repository.
 
-!`ctx stats`
+!`{{CTX_CMD}} --json stats`
 
-Explain the last run briefly, including token reduction and any recorded runtime metadata."#,
+Show the stats payload first.
+Then add one short sentence summarizing the latest run."#,
         },
         HostActionTemplate {
             slug: "ctx-opencode-install",
             description: "Setup | Refresh CTX integration files for OpenCode",
             body: r#"Refresh the current repository's OpenCode integration.
 
-Run `ctx opencode install`.
+!`{{CTX_CMD}} opencode install`
+
 Then show the output and summarize which files were written or updated."#,
         },
         HostActionTemplate {
@@ -566,7 +599,7 @@ Then show the output and summarize which files were written or updated."#,
 Arguments:
 - `$1`: optional port, default `8765`
 
-If the user wants the server started in this session, run `ctx mcp serve --port <port>`.
+If the user wants the server started in this session, run `{{CTX_CMD}} mcp serve --port <port>`.
 Otherwise, show the exact command to run and explain that it is a long-running local process."#,
         },
         HostActionTemplate {
@@ -574,14 +607,15 @@ Otherwise, show the exact command to run and explain that it is a long-running l
             description: "MCP | Show the CTX MCP stdio launch command",
             body: r#"Show the CTX MCP stdio launch command for the current repository.
 
-Use the current repository root and explain how a host CLI can launch `ctx --repo-root <repo> mcp stdio` locally."#,
+Use the current repository root and explain how a host CLI can launch `{{CTX_CMD}} mcp stdio` locally."#,
         },
         HostActionTemplate {
             slug: "ctx-mcp-config-opencode",
             description: "MCP | Generate CTX MCP config for OpenCode",
             body: r#"Generate the CTX MCP config snippet for OpenCode.
 
-Run `ctx mcp config opencode`.
+!`{{CTX_CMD}} mcp config opencode`
+
 Then show the output and explain how to use it."#,
         },
     ]

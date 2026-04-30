@@ -7,5 +7,6 @@ Build compact CTX context for this task without invoking another agent.
 Arguments:
 - `$ARGUMENTS`: the task query
 
-Run `ctx ask "$ARGUMENTS"`.
+!`'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' ask "$ARGUMENTS"`
+
 Then show the result and explain how it should guide the next step.

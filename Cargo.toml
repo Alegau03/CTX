@@ -21,7 +21,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["CTX contributors"]
-repository = "https://github.com/example/context-engine"
+repository = "https://github.com/Alegau03/CTX"
 
 [workspace.dependencies]
 anyhow = "1.0"

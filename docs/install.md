@@ -34,6 +34,12 @@ ctx doctor
 
 After public releases are published, download the archive for your platform:
 
+Project repository:
+
+```text
+https://github.com/Alegau03/CTX
+```
+
 ```bash
 tar -xzf ctx-0.1.0-<target>.tar.gz
 sudo install -m 0755 ctx-0.1.0-<target>/ctx /usr/local/bin/ctx
@@ -60,7 +66,7 @@ Local formula test:
 brew install ./Formula/ctx.rb
 ```
 
-Public tap setup is still pending final GitHub coordinates. Before publishing the tap, update `Formula/ctx.rb` with the real repository URL, release archive URL, and SHA256.
+The formula now points at the public GitHub repository. Before publishing a public tap or release, update only the final `sha256` in `Formula/ctx.rb` to match the uploaded archive.
 
 ## Enable A Repository
 

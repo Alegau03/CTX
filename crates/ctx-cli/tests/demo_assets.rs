@@ -81,9 +81,17 @@ fn docs_link_the_demo_walkthrough_and_script() {
     let root = repo_root();
     let readme = fs::read_to_string(root.join("README.md")).expect("readme");
     let guide = fs::read_to_string(root.join("guide.md")).expect("guide");
+    let walkthrough =
+        fs::read_to_string(root.join("docs/demo-walkthrough.md")).expect("walkthrough");
+    let fixture_readme = fs::read_to_string(root.join("demo/fixtures/opencode-auth-lab/README.md"))
+        .expect("fixture readme");
 
     assert!(readme.contains("docs/demo-walkthrough.md"));
     assert!(guide.contains("docs/demo-script.md"));
+    assert!(walkthrough.contains("npm install"));
+    assert!(walkthrough.contains("/ctx-prune-logs npm run test:auth"));
+    assert!(fixture_readme.contains("npm install"));
+    assert!(fixture_readme.contains("/ctx-prune-logs npm run test:auth"));
 }
 
 #[test]
@@ -91,4 +99,47 @@ fn demo_fixture_contains_versioned_benchmark_reports() {
     let root = repo_root().join("demo/fixtures/opencode-auth-lab/benchmarks");
     assert!(root.join("report.md").exists());
     assert!(root.join("report.json").exists());
+}
+
+#[test]
+fn demo_fixture_includes_lockfile_for_repeatable_log_demo_setup() {
+    let root = repo_root().join("demo/fixtures/opencode-auth-lab");
+    assert!(root.join("package-lock.json").exists());
+}
+
+#[test]
+fn docs_track_current_fixture_benchmark_and_bootstrap_numbers() {
+    let root = repo_root();
+    let readme = fs::read_to_string(root.join("README.md")).expect("readme");
+    let guide = fs::read_to_string(root.join("guide.md")).expect("guide");
+    let walkthrough =
+        fs::read_to_string(root.join("docs/demo-walkthrough.md")).expect("walkthrough");
+    let demo_script = fs::read_to_string(root.join("docs/demo-script.md")).expect("demo script");
+    let final_qa = fs::read_to_string(root.join("docs/final-qa.md")).expect("final qa");
+    let release_playbook =
+        fs::read_to_string(root.join("docs/release-playbook.md")).expect("release playbook");
+
+    assert!(readme.contains("56.72%"));
+    assert!(guide.contains("imported_files=4 imported_directives=27"));
+    assert!(guide.contains("56.72%"));
+    assert!(walkthrough.contains("27` directives total"));
+    assert!(demo_script.contains("56.72%"));
+    assert!(final_qa.contains("27` directives"));
+    assert!(release_playbook.contains("56.72%"));
+}
+
+#[test]
+fn external_public_benchmark_assets_exist() {
+    let root = repo_root();
+    for path in [
+        "scripts/demo/agentsmd-external-benchmark.sh",
+        "docs/external-benchmark-agentsmd.md",
+        "benchmarks/external/agentsmd/checklist.md",
+        "benchmarks/external/agentsmd/markdown-answer.txt",
+        "benchmarks/external/agentsmd/graph-answer.txt",
+        "benchmarks/external/agentsmd/report.md",
+        "benchmarks/external/agentsmd/report.json",
+    ] {
+        assert!(root.join(path).exists(), "missing {path}");
+    }
 }

@@ -11,4 +11,5 @@ Arguments:
 - `$4`: optional source, default `manual`
 
 Run the matching `ctx memory set` command.
+Use `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' memory set ...` as the command prefix.
 Then confirm what was stored and show the exact command used.

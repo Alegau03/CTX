@@ -8,5 +8,5 @@ Arguments:
 - `$1`: optional scope
 - `$2`: optional limit
 
-Run `ctx memory list` with the provided filters.
+Run `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' memory list` with the provided filters.
 Show the directives first, then summarize any patterns you notice.

@@ -89,10 +89,48 @@ fn doctor_reports_ready_repo_after_init() {
         .success()
         .stdout(predicate::str::contains("config: ok"))
         .stdout(predicate::str::contains("graph: ok"))
+        .stdout(predicate::str::contains("indexed_files: 0"))
         .stdout(predicate::str::contains("audit_log: ok"))
         .stdout(predicate::str::contains("local_only: true"))
         .stdout(predicate::str::contains("remote_upload_enabled: false"))
+        .stdout(predicate::str::contains("ready: false"))
         .stdout(predicate::str::contains("next: ctx index"));
+}
+
+#[test]
+fn doctor_reports_ready_repo_after_index() {
+    let tmp = tempdir().expect("tempdir");
+    std::fs::create_dir_all(tmp.path().join("src")).expect("src dir");
+    std::fs::write(
+        tmp.path().join("src/auth.ts"),
+        "export function refreshSession(userId: string) { return `rotated:${userId}`; }\n",
+    )
+    .expect("write source file");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("index")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("doctor")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("graph: ok"))
+        .stdout(predicate::str::contains("indexed_files: 1"))
+        .stdout(predicate::str::contains("ready: true"))
+        .stdout(predicate::str::contains("next: ctx memory bootstrap"));
 }
 
 #[test]
@@ -470,17 +508,27 @@ fn opencode_install_creates_project_config_and_command_files() {
     let menu_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx.md"))
         .expect("read ctx menu command");
     assert!(menu_command.contains("description: Menu |"));
-    assert!(menu_command.contains("CTX Command Center"));
-    assert!(menu_command.contains("Recommended Start"));
-    assert!(menu_command.contains("/ctx-pack <task>"));
-    assert!(menu_command.contains("/ctx-prune-logs <shell command>"));
+    assert!(menu_command.contains("deterministic CTX menu command"));
+    assert!(menu_command.contains("do not inspect files manually"));
+    assert!(menu_command.contains("!`"));
+    assert!(menu_command.contains("menu"));
+    assert!(menu_command.contains("!`"));
+    assert!(menu_command.contains("--repo-root"));
+
+    let doctor_command =
+        std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-doctor.md"))
+            .expect("read ctx doctor command");
+    assert!(doctor_command.contains("ready: true"));
+    assert!(doctor_command.contains("print the exact `next:` command verbatim"));
+    assert!(doctor_command.contains("do not inspect files manually"));
 
     let prune_logs_command =
         std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-prune-logs.md"))
             .expect("read prune logs command");
     assert!(prune_logs_command.contains("must be a real shell command"));
     assert!(prune_logs_command.contains("Do not treat `$ARGUMENTS` as a topic"));
-    assert!(prune_logs_command.contains("ctx prune logs --max-lines 50"));
+    assert!(prune_logs_command.contains("prune logs --max-lines 50"));
+    assert!(prune_logs_command.contains("--repo-root"));
 }
 
 #[test]

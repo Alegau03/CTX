@@ -6,5 +6,8 @@ Build a compact CTX context pack for this task:
 
 $ARGUMENTS
 
-Run `ctx pack "$ARGUMENTS"` in the current repository root.
-Show the compact context first, then explain how it should guide the next step.
+!`'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' pack "$ARGUMENTS" --json`
+
+Print `compact_context` first.
+Then print one compact stats line with `packed_tokens`, `reduction_pct`, and `pack_path`.
+Keep any follow-up explanation to at most one short sentence.

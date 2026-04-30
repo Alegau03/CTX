@@ -30,14 +30,17 @@ Lead with:
 
 Current committed fixture result:
 
-- `75.81%` token reduction on markdown rules vs graph memory
+- `56.72%` token reduction on markdown rules vs graph memory
+- `markdown=1.00` and `graph=1.00` query coverage
 - `33.33%` markdown answer success vs `100.00%` graph-memory answer success
-- graph quality win for the demo scenario
+- graph quality win for the demo scenario with `markdown=0`, `graph=1`, `ties=0`
 
 Proof files:
 
 - `demo/fixtures/opencode-auth-lab/benchmarks/report.md`
 - `demo/fixtures/opencode-auth-lab/benchmarks/report.json`
+- `benchmarks/external/agentsmd/report.md`
+- `benchmarks/external/agentsmd/report.json`
 
 Keep public claims scoped to this fixture until broader benchmark reports are added.
 

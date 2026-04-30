@@ -10,6 +10,7 @@ use ctx_core::{
     run_memory_list, run_memory_search, run_memory_set, run_pack, run_prune_diff, run_prune_logs,
     run_retrieve,
 };
+use ctx_graph::GraphStore;
 use ctx_hooks::apply_pre_prompt_hook;
 use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
 mod host_integration;
@@ -91,6 +92,7 @@ enum Commands {
     },
     Stats,
     Doctor,
+    Menu,
     Help,
 }
 
@@ -621,6 +623,9 @@ fn run() -> Result<()> {
         Commands::Doctor => {
             println!("{}", render_doctor_report(&repo_root));
         }
+        Commands::Menu => {
+            println!("{}", render_command_center(&repo_root));
+        }
         Commands::Help => {
             println!("{}", command_guide());
         }
@@ -686,6 +691,13 @@ fn render_doctor_report(repo_root: &Path) -> String {
     let stats_dir = repo_root.join(".ctx/stats");
     let audit_path = repo_root.join(".ctx/audit.log");
     let packs_dir = repo_root.join(".ctx/packs");
+    let indexed_files = indexed_file_count(&graph_path);
+    let ready = config_path.is_file()
+        && graph_path.is_file()
+        && indexed_files.unwrap_or(0) > 0
+        && packs_dir.is_dir()
+        && stats_dir.is_dir()
+        && audit_path.is_file();
 
     let mut lines = vec![
         "CTX Doctor".to_string(),
@@ -697,6 +709,10 @@ fn render_doctor_report(repo_root: &Path) -> String {
         format!("stats_dir: {}", status_label(stats_dir.is_dir())),
         format!("audit_log: {}", status_label(audit_path.is_file())),
     ];
+
+    if let Some(indexed_files) = indexed_files {
+        lines.push(format!("indexed_files: {indexed_files}"));
+    }
 
     match load_or_default_config(repo_root) {
         Ok(cfg) => {
@@ -721,13 +737,69 @@ fn render_doctor_report(repo_root: &Path) -> String {
 
     let next = if !config_path.is_file() {
         "ctx init"
-    } else if !graph_path.is_file() {
-        "ctx init"
-    } else {
+    } else if !graph_path.is_file() || indexed_files.unwrap_or(0) == 0 {
         "ctx index"
+    } else if count_memory_directives(&graph_path).unwrap_or(0) == 0 {
+        "ctx memory bootstrap"
+    } else {
+        "ctx pack <task>"
     };
+    lines.push(format!("ready: {ready}"));
     lines.push(format!("next: {next}"));
     lines.join("\n")
+}
+
+fn render_command_center(repo_root: &Path) -> String {
+    let config_path = repo_root.join(".ctx/config.toml");
+    let graph_path = repo_root.join(".ctx/graph.db");
+    let ready = config_path.is_file() && indexed_file_count(&graph_path).unwrap_or(0) > 0;
+    let next = if !config_path.is_file() {
+        "ctx init"
+    } else if indexed_file_count(&graph_path).unwrap_or(0) == 0 {
+        "ctx index"
+    } else if count_memory_directives(&graph_path).unwrap_or(0) == 0 {
+        "ctx memory bootstrap"
+    } else {
+        "ctx pack <task>"
+    };
+    let why = match next {
+        "ctx init" => "runtime folders and config are missing",
+        "ctx index" => "the graph exists but does not contain indexed source files yet",
+        "ctx memory bootstrap" => {
+            "the graph is ready, but project rules have not been imported into graph memory yet"
+        }
+        _ => "the repository is indexed and ready for task-focused context packing",
+    };
+
+    format!(
+        "CTX Command Center\n\nrepo: {} | status: {}\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-index` - build or refresh the graph\n- `/ctx-memory-bootstrap` - import AGENTS-style project rules\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nSetup\n- `/ctx-init`\n- `/ctx-index`\n- `/ctx-reindex`\n- `/ctx-opencode-install`\n\nContext\n- `/ctx-pack <task>`\n- `/ctx-ask <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-graph-query <query>`\n- `/ctx-explain <task>`\n\nMemory\n- `/ctx-memory-bootstrap`\n- `/ctx-memory-search <topic>`\n- `/ctx-memory-list`\n- `/ctx-memory-get <key>`\n- `/ctx-memory-set <key> <body>`\n- `/ctx-memory-export <file>`\n\nDebug\n- `/ctx-prune-logs <shell command>`\n- `/ctx-prune-diff <topic>`\n- `/ctx-hook <task>`\n\nBenchmark\n- `/ctx-benchmark-memory-ab ...`\n- `/ctx-benchmark-memory-suite ...`\n- `/ctx-stats`\n\nMCP\n- `/ctx-mcp-stdio`\n- `/ctx-mcp-serve`\n- `/ctx-mcp-config-opencode`\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
+        repo_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("repo"),
+        if ready { "ready" } else { "needs setup" },
+    )
+}
+
+fn indexed_file_count(graph_path: &Path) -> Option<usize> {
+    if !graph_path.is_file() {
+        return None;
+    }
+
+    let store = GraphStore::open(graph_path).ok()?;
+    store.query_files("").ok().map(|files| files.len())
+}
+
+fn count_memory_directives(graph_path: &Path) -> Option<usize> {
+    if !graph_path.is_file() {
+        return None;
+    }
+
+    let store = GraphStore::open(graph_path).ok()?;
+    store
+        .list_memory_directives(None, 10_000)
+        .ok()
+        .map(|items| items.len())
 }
 
 fn current_binary_label() -> String {

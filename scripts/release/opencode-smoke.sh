@@ -31,7 +31,10 @@ grep '.opencode/instructions/ctx-host-first.md' "$SMOKE_DIR/opencode.json" >/dev
 grep 'stdio' "$SMOKE_DIR/opencode.json" >/dev/null
 
 grep 'description:' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
-grep 'ctx pack' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
+grep 'pack "$ARGUMENTS"' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
+grep 'deterministic CTX menu command' "$SMOKE_DIR/.opencode/commands/ctx.md" >/dev/null
+grep 'ready: true' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
+grep 'do not inspect files manually' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
 grep 'Automatic CTX Usage' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 grep 'Do not revive wrapper-style workflows' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 

@@ -20,6 +20,7 @@ The generated config registers CTX as a local MCP server launched with:
 
 The generated commands expose the current CTX feature surface as `/ctx-*` commands inside OpenCode.
 The bootstrap and graph-memory flow still support compatibility seed files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
+The generated command files prefer deterministic CTX-owned execution: they call the absolute `ctx` binary with `--repo-root`, lean on `--json` where it reduces host chatter, and ask OpenCode only for a narrow result-first explanation of the command output.
 
 Users should open `opencode` after bootstrap and keep normal work inside the OpenCode TUI.
 
@@ -58,9 +59,23 @@ The OpenCode integration covers:
 - Do not ask users to use wrapper commands for daily work.
 - Keep all CTX data local unless a future explicit opt-in remote feature is added.
 - Prefer graph memory over repeated full markdown instruction injection.
+- Treat `ctx doctor` output as the source of truth for readiness. `ready: true` means CTX is operational; `next:` is then a recommended workflow step, not a blocker.
+
+## Validation Notes
+
+- MCP health is validated automatically with:
+
+```bash
+cd <repo>
+opencode mcp list --print-logs --log-level DEBUG --pure
+```
+
+- A healthy run should show `ctx connected` and `toolCount=13`.
+- Headless `opencode run` is useful for validating `/ctx` menu rendering and MCP bootstrap, but the interactive TUI remains the source of truth for the full slash-command UX.
+- Bootstrap, `ctx opencode install`, MCP handshake, and basic retrieval/pack flow were also validated on the public `charmbracelet/glow` repository.
 
 ## Remaining Work
 
 - Add public screenshots and video assets after manual OpenCode validation.
-- Validate the same flow on an external real-world repository.
+- Run the benchmark flow on at least one external real-world repository.
 - Continue improving automatic host use of MCP tools where OpenCode exposes deeper hooks.

@@ -12,5 +12,5 @@ Arguments:
 - `$5`: optional markdown answer path
 - `$6`: optional graph answer path
 
-Run the matching `ctx benchmark memory-ab` command.
+Run the matching `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' benchmark memory-ab` command.
 Then explain the token delta and which side won on quality if that data is present.

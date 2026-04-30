@@ -7,5 +7,6 @@ Reindex selected paths in the current repository.
 Arguments:
 - `$ARGUMENTS`: optional path arguments
 
-Run `ctx reindex $ARGUMENTS`.
+!`'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' reindex $ARGUMENTS`
+
 Then show the output and explain what changed.

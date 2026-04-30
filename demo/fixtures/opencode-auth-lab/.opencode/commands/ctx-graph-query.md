@@ -6,5 +6,6 @@ Query the CTX graph for:
 
 $ARGUMENTS
 
-Run `ctx graph query "$ARGUMENTS"` in the current repository root.
+!`'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' graph query "$ARGUMENTS"`
+
 Show the graph matches and explain the most relevant relationships.

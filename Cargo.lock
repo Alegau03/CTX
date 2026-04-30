@@ -300,6 +300,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "ctx-core",
+ "ctx-graph",
  "ctx-hooks",
  "ctx-intake",
  "ctx-mcp",

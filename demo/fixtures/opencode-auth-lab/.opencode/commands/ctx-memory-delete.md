@@ -7,5 +7,5 @@ Delete a CTX memory directive from the current repository.
 Argument:
 - `$1`: directive key
 
-Run `ctx memory delete "$1"`.
+Run `'/Users/alessandrogautieri/Documents/coding/ctx/target/debug/ctx' --repo-root 'demo/fixtures/opencode-auth-lab' memory delete "$1"`.
 Then confirm whether the directive was deleted or not found.

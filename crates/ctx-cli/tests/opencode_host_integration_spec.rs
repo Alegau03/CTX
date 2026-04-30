@@ -16,21 +16,17 @@ fn opencode_host_first_docs_capture_the_product_pivot() {
     let guidelines = fs::read_to_string(root.join("docs/guidelines.md")).expect("guidelines");
     let integration =
         fs::read_to_string(root.join("docs/opencode-integration.md")).expect("integration doc");
-    let release_roadmap =
-        fs::read_to_string(root.join("docs/superpowers/plans/2026-04-25-final-release-roadmap.md"))
-            .expect("final roadmap");
     let guide = fs::read_to_string(root.join("guide.md")).expect("guide");
 
     assert!(readme.contains("OpenCode-first"));
     assert!(readme.contains("guide.md"));
     assert!(readme.contains("Graph Memory"));
+    assert!(!readme.contains("docs/superpowers/plans/"));
     assert!(guidelines.contains("OpenCode-first is the highest-priority integration target."));
     assert!(guidelines.contains("OpenCode-native commands are the product surface"));
     assert!(guidelines.contains("wrapper-first UX as legacy"));
     assert!(integration.contains("Make CTX live inside OpenCode"));
     assert!(integration.contains("should open `opencode`"));
-    assert!(release_roadmap.contains("Wrapper-first public CLI entrypoints have been removed"));
-    assert!(release_roadmap.contains("Remaining Before Public GitHub Release"));
     assert!(guide.contains("Recommended Order"));
     assert!(guide.contains("Graph Memory Workflow"));
 }
@@ -124,12 +120,41 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(command.contains("Context |"));
     assert!(!command.contains("\nagent:"));
     assert!(!command.contains("\nmodel:"));
+    assert!(command.contains("pack \"$ARGUMENTS\" --json"));
+    assert!(command.contains("Print `compact_context` first"));
+    assert!(command.contains("at most one short sentence"));
+
+    let retrieve_command =
+        fs::read_to_string(tmp.path().join(".opencode/commands/ctx-retrieve.md"))
+            .expect("ctx-retrieve command");
+    assert!(retrieve_command.contains("retrieve \"$ARGUMENTS\" --limit 8 --json"));
+    assert!(retrieve_command.contains("Start with the useful result immediately"));
+    assert!(retrieve_command.contains("Keep any follow-up summary to one short sentence"));
+
+    let hook_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-hook.md"))
+        .expect("ctx-hook command");
+    assert!(hook_command.contains("hook \"$ARGUMENTS\" --json"));
+    assert!(hook_command.contains("Print `hook_prompt` first"));
+    assert!(hook_command.contains("single compact metadata line"));
+
+    let memory_search_command =
+        fs::read_to_string(tmp.path().join(".opencode/commands/ctx-memory-search.md"))
+            .expect("ctx-memory-search command");
+    assert!(memory_search_command.contains("memory search \"$1\" --json"));
+    assert!(memory_search_command.contains("Show only the matching directives"));
+
+    let stats_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-stats.md"))
+        .expect("ctx-stats command");
+    assert!(stats_command.contains("Show the stats payload first"));
+    assert!(stats_command.contains("one short sentence"));
 
     let menu =
         fs::read_to_string(tmp.path().join(".opencode/commands/ctx.md")).expect("ctx menu command");
-    assert!(menu.contains("CTX Command Center"));
-    assert!(menu.contains("Recommended Start"));
-    assert!(menu.contains("/ctx-memory-bootstrap"));
+    assert!(menu.contains("deterministic CTX menu command"));
+    assert!(menu.contains("do not inspect files manually"));
+    assert!(menu.contains("menu"));
+    assert!(menu.contains("--repo-root"));
+    assert!(menu.contains("!`"));
 
     let instructions =
         fs::read_to_string(tmp.path().join(".opencode/instructions/ctx-host-first.md"))
@@ -138,4 +163,11 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(instructions.contains("Automatic CTX Usage"));
     assert!(instructions.contains("/ctx-memory-bootstrap"));
     assert!(instructions.contains("/ctx-memory-search"));
+
+    let index_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-index.md"))
+        .expect("ctx-index command");
+    assert!(index_command.contains("!`"));
+    assert!(index_command.contains("--repo-root"));
+    assert!(index_command.contains("do not glob files"));
+    assert!(index_command.contains("indexed_files:"));
 }

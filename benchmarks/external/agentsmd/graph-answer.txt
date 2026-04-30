@@ -1,0 +1,1 @@
+I will use npm run dev while iterating, do not run npm run build during the agent session, update the lockfile after dependency changes, and restart the development server so Next.js picks up the new dependencies.

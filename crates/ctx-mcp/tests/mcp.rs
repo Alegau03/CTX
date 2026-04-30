@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -5,7 +6,9 @@ use std::thread;
 use std::time::Duration;
 
 use ctx_core::init_repo;
-use ctx_mcp::{McpServerConfig, default_tools, mcp_banner, process_rpc_message, serve_http};
+use ctx_mcp::{
+    McpServerConfig, default_tools, mcp_banner, process_rpc_message, serve_http, serve_stdio_with,
+};
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -75,6 +78,13 @@ fn tools_list_rpc_returns_required_tools() {
 
     assert!(names.contains(&"get_relevant_context".to_string()));
     assert!(names.contains(&"project_map".to_string()));
+    assert!(
+        response["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .all(|tool| tool["inputSchema"].is_object())
+    );
 }
 
 #[test]
@@ -90,12 +100,107 @@ fn stdio_rpc_message_uses_same_initialize_contract() {
     let response = process_rpc_message(
         &cfg,
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
-    );
+    )
+    .expect("initialize should return a response");
     let value: Value = serde_json::from_str(&response).expect("json response");
 
     assert_eq!(value["jsonrpc"], "2.0");
     assert_eq!(value["id"], 1);
     assert_eq!(value["result"]["serverInfo"]["name"], "ctx-mcp");
+}
+
+#[test]
+fn initialized_notification_returns_no_response_and_tools_list_still_works() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let cfg = McpServerConfig {
+        repo_root: tmp.path().to_path_buf(),
+        port: 8765,
+        once: false,
+    };
+
+    let initialize = process_rpc_message(
+        &cfg,
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+    )
+    .expect("initialize should return a response");
+    let initialize_value: Value = serde_json::from_str(&initialize).expect("json response");
+    assert_eq!(initialize_value["result"]["serverInfo"]["name"], "ctx-mcp");
+
+    let initialized = process_rpc_message(
+        &cfg,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#,
+    );
+    assert!(
+        initialized.is_none(),
+        "notifications must not emit JSON-RPC responses"
+    );
+
+    let tools_list = process_rpc_message(
+        &cfg,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+    )
+    .expect("tools/list should return a response");
+    let tools_value: Value = serde_json::from_str(&tools_list).expect("json response");
+    assert!(
+        tools_value["result"]["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .any(|tool| tool["name"] == "get_relevant_context")
+    );
+}
+
+#[test]
+fn bare_json_stdio_roundtrip_emits_plain_json_response() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let cfg = McpServerConfig {
+        repo_root: tmp.path().to_path_buf(),
+        port: 8765,
+        once: false,
+    };
+
+    let mut input = Cursor::new(
+        b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\"}}\n"
+            .to_vec(),
+    );
+    let mut output = Vec::new();
+
+    serve_stdio_with(&cfg, &mut input, &mut output).expect("serve stdio");
+    let text = String::from_utf8(output).expect("utf8 output");
+
+    assert!(text.trim_start().starts_with('{'));
+    assert!(!text.contains("Content-Length:"));
+
+    let response: Value = serde_json::from_str(text.trim()).expect("json response");
+    assert_eq!(response["id"], 1);
+    assert_eq!(response["result"]["protocolVersion"], "2025-11-25");
+}
+
+#[test]
+fn content_length_stdio_roundtrip_emits_framed_response() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let cfg = McpServerConfig {
+        repo_root: tmp.path().to_path_buf(),
+        port: 8765,
+        once: false,
+    };
+
+    let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+    let request = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let mut input = Cursor::new(request.into_bytes());
+    let mut output = Vec::new();
+
+    serve_stdio_with(&cfg, &mut input, &mut output).expect("serve stdio");
+    let text = String::from_utf8(output).expect("utf8 output");
+
+    assert!(text.starts_with("Content-Length: "));
+    let (_, response_body) = text.split_once("\r\n\r\n").expect("framed stdio response");
+    let response: Value = serde_json::from_str(response_body).expect("json response");
+    assert_eq!(response["id"], 1);
+    assert_eq!(response["result"]["serverInfo"]["name"], "ctx-mcp");
 }
 
 #[test]
