@@ -32,23 +32,41 @@ ctx doctor
 
 ## GitHub Releases
 
-After public releases are published, download the archive for your platform:
-
-Project repository:
+After public releases are published, download the archive for your platform from:
 
 ```text
-https://github.com/Alegau03/CTX
+https://github.com/Alegau03/CTX/releases
 ```
+
+Supported archive formats:
+
+| Platform | Artifact |
+|---|---|
+| macOS Apple Silicon | `ctx-<version>-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `ctx-<version>-x86_64-apple-darwin.tar.gz` |
+| Linux x64 | `ctx-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `ctx-<version>-x86_64-pc-windows-msvc.zip` |
+
+Verify checksum first:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+```
+
+Install on macOS or Linux:
 
 ```bash
 tar -xzf ctx-0.1.0-<target>.tar.gz
 sudo install -m 0755 ctx-0.1.0-<target>/ctx /usr/local/bin/ctx
 ```
 
-Verify checksum:
+Install on Windows PowerShell:
 
-```bash
-shasum -a 256 -c SHA256SUMS
+```powershell
+Expand-Archive ctx-0.1.0-x86_64-pc-windows-msvc.zip -DestinationPath .
+New-Item -ItemType Directory -Force "$HOME\bin" | Out-Null
+Copy-Item .\ctx-0.1.0-x86_64-pc-windows-msvc\ctx.exe "$HOME\bin\ctx.exe"
+$env:Path += ";$HOME\bin"
 ```
 
 Verify install:
@@ -66,13 +84,14 @@ Local formula test:
 brew install ./Formula/ctx.rb
 ```
 
-The formula now points at the public GitHub repository. Before publishing a public tap or release, update only the final `sha256` in `Formula/ctx.rb` to match the uploaded archive.
+The formula points at the public GitHub tag source archive, not the compiled release archive. When tagging a new version, update the `url` and `sha256` in `Formula/ctx.rb` to match that new tag source tarball.
 
 ## Enable A Repository
 
 Run from a project root:
 
 ```bash
+cd /path/to/your/project
 ctx init
 ctx index
 ctx opencode install
@@ -112,13 +131,18 @@ Useful environment variables:
 ```bash
 CTX_RELEASE_RUN_TESTS=0 scripts/release/build.sh
 CTX_TARGET=x86_64-unknown-linux-gnu scripts/release/build.sh
+CTX_TARGET=x86_64-pc-windows-msvc scripts/release/build.sh
+CTX_TARGETS="aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc" scripts/release/build.sh
 CTX_DIST_DIR=/tmp/ctx-dist scripts/release/build.sh
 ```
+
+`CTX_TARGETS` builds multiple target-specific archives in one run. Non-host targets may require a matching native runner or a configured cross-compilation toolchain. For reliable public releases, run the same script on the matching OS or CI runner for each target you publish.
 
 Release output:
 
 ```text
 dist/ctx-<version>-<target>.tar.gz
+dist/ctx-<version>-<target>.zip
 dist/SHA256SUMS
 dist/release-manifest.json
 ```
@@ -155,6 +179,7 @@ Archive verification:
 
 ```bash
 scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.tar.gz dist/SHA256SUMS
+scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.zip dist/SHA256SUMS
 ```
 
 Release metadata:

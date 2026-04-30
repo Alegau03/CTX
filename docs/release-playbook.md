@@ -67,10 +67,13 @@ Inside OpenCode:
 ## Install Snippet
 
 ```bash
+shasum -a 256 -c SHA256SUMS
 tar -xzf ctx-<version>-<target>.tar.gz
 sudo install -m 0755 ctx-<version>-<target>/ctx /usr/local/bin/ctx
 ctx doctor
 ```
+
+Windows users should receive the matching `.zip` artifact plus `ctx.exe`.
 
 ## Verification
 
@@ -79,6 +82,8 @@ Release artifacts should be verified with:
 ```bash
 scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.tar.gz dist/SHA256SUMS
 ```
+
+For multi-platform releases, publish one artifact per target and keep `SHA256SUMS` alongside all archives.
 
 Final gate:
 
@@ -91,6 +96,6 @@ scripts/release/final-qa.sh
 - README and guide are OpenCode-first
 - screenshots/video placeholder exists and demo script is ready
 - benchmark reports are committed and reproducible
-- release archive and SHA256SUMS are generated
+- macOS, Linux, and Windows release archives and SHA256SUMS are generated
 - package verification passes after unpacking
 - Homebrew formula coordinates are updated before tap publication

@@ -2,7 +2,7 @@ class Ctx < Formula
   desc "Local-first context runtime engine for coding agents"
   homepage "https://github.com/Alegau03/CTX"
   url "https://github.com/Alegau03/CTX/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "REPLACE_WITH_RELEASE_SHA256"
+  sha256 "a4f483b954613aaea417671862510aa09e66e9021b5b565c0e90cd5434993d97"
   license "MIT"
 
   depends_on "rust" => :build

@@ -76,21 +76,26 @@ External validation completed:
 
 ## OpenCode-First Usage
 
-Install from source while the public release/tap is being finalized:
+Install from the latest [GitHub Release](https://github.com/Alegau03/CTX/releases) for your platform:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+tar -xzf ctx-0.1.0-aarch64-apple-darwin.tar.gz
+sudo install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+```
+
+Windows release archives use `.zip` and contain `ctx.exe`; full platform-specific install commands live in [docs/install.md](docs/install.md).
+
+If you prefer building from source:
 
 ```bash
 cargo install --locked --path crates/ctx-cli
 ```
 
-If `ctx` is not found after install, add Cargo's bin directory to your shell PATH:
+After `ctx` is installed, move into any project and enable CTX:
 
 ```bash
-export PATH="$HOME/.cargo/bin:$PATH"
-```
-
-Enable CTX in a repository:
-
-```bash
+cd /path/to/your/project
 ctx init
 ctx index
 ctx opencode install
@@ -217,4 +222,4 @@ Completed:
 Remaining before a public GitHub launch:
 
 - add screenshots and recorded demo assets after manual validation
-- replace `Formula/ctx.rb` `sha256` with the final release artifact checksum
+- add packaged release archives for the supported macOS, Linux, and Windows targets

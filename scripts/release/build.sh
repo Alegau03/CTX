@@ -15,78 +15,131 @@ fi
 
 VERSION="${CTX_VERSION:-$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/' || true)}"
 VERSION="${VERSION:-0.1.0}"
-TARGET="${CTX_TARGET:-$("$CARGO_BIN" -vV | awk '/host:/ { print $2 }')}"
+HOST_TARGET="$("$CARGO_BIN" -vV | awk '/host:/ { print $2 }')"
 DIST_DIR="${CTX_DIST_DIR:-$ROOT_DIR/dist}"
-PACKAGE_NAME="ctx-${VERSION}-${TARGET}"
-PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
-ARCHIVE_PATH="$DIST_DIR/$PACKAGE_NAME.tar.gz"
 MANIFEST_PATH="$DIST_DIR/release-manifest.json"
 
 RUN_TESTS="${CTX_RELEASE_RUN_TESTS:-1}"
+
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 or python is required for release packaging" >&2
+  exit 1
+fi
+
+declare -a TARGETS=()
+if [[ -n "${CTX_TARGETS:-}" ]]; then
+  while IFS= read -r target; do
+    [[ -n "$target" ]] && TARGETS+=("$target")
+  done < <(printf '%s\n' "$CTX_TARGETS" | tr ', ' '\n\n' | sed '/^$/d')
+elif [[ -n "${CTX_TARGET:-}" ]]; then
+  TARGETS=("$CTX_TARGET")
+else
+  TARGETS=("$HOST_TARGET")
+fi
+
+checksum_file="$DIST_DIR/SHA256SUMS"
+mkdir -p "$DIST_DIR"
+: > "$checksum_file"
+
+declare -a MANIFEST_ITEMS=()
+declare -a BUILT_ARCHIVES=()
+
+compute_sha256() {
+  local path="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    sha256sum "$path" | awk '{print $1}'
+  fi
+}
+
+create_zip_archive() {
+  local source_dir="$1"
+  local archive_path="$2"
+  "$PYTHON_BIN" - "$source_dir" "$archive_path" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+source = pathlib.Path(sys.argv[1])
+archive = pathlib.Path(sys.argv[2])
+with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for path in source.rglob("*"):
+        if path.is_file():
+            zf.write(path, path.relative_to(source.parent))
+PY
+}
 
 if [[ "$RUN_TESTS" != "0" ]]; then
   "$CARGO_BIN" fmt --all --check
   "$CARGO_BIN" test --workspace
 fi
 
-build_args=(build --release --locked --bin ctx)
-if [[ -n "${CTX_TARGET:-}" ]]; then
-  build_args+=(--target "$TARGET")
-fi
-"$CARGO_BIN" "${build_args[@]}"
-
-BIN_DIR="$ROOT_DIR/target/release"
-if [[ -n "${CTX_TARGET:-}" ]]; then
+for TARGET in "${TARGETS[@]}"; do
+  PACKAGE_NAME="ctx-${VERSION}-${TARGET}"
+  PACKAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
   BIN_DIR="$ROOT_DIR/target/$TARGET/release"
-fi
+  BIN_NAME="ctx"
+  ARCHIVE_EXT="tar.gz"
 
-rm -rf "$PACKAGE_DIR"
-mkdir -p "$PACKAGE_DIR"
-cp "$BIN_DIR/ctx" "$PACKAGE_DIR/ctx"
-cp README.md LICENSE "$PACKAGE_DIR/" 2>/dev/null || true
-cp docs/install.md "$PACKAGE_DIR/INSTALL.md"
-
-"$ROOT_DIR/scripts/release/install-smoke.sh" "$PACKAGE_DIR/ctx"
-"$ROOT_DIR/scripts/release/opencode-smoke.sh" "$PACKAGE_DIR/ctx"
-"$ROOT_DIR/scripts/demo/opencode-auth-lab-smoke.sh" "$PACKAGE_DIR/ctx"
-"$ROOT_DIR/scripts/demo/opencode-auth-lab-mcp-smoke.sh" "$PACKAGE_DIR/ctx"
-"$ROOT_DIR/scripts/demo/opencode-auth-lab-benchmark.sh" "$PACKAGE_DIR/ctx"
-
-mkdir -p "$DIST_DIR"
-(
-  cd "$DIST_DIR"
-  tar -czf "$PACKAGE_NAME.tar.gz" "$PACKAGE_NAME"
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$PACKAGE_NAME.tar.gz" > SHA256SUMS
-  else
-    sha256sum "$PACKAGE_NAME.tar.gz" > SHA256SUMS
+  if [[ "$TARGET" == *windows* ]]; then
+    BIN_NAME="ctx.exe"
+    ARCHIVE_EXT="zip"
   fi
-)
 
-if command -v shasum >/dev/null 2>&1; then
-  SHA256_VALUE="$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')"
-else
-  SHA256_VALUE="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
-fi
+  build_args=(build --release --locked --bin ctx --target "$TARGET")
+  "$CARGO_BIN" "${build_args[@]}"
 
-cat > "$MANIFEST_PATH" <<EOF
+  rm -rf "$PACKAGE_DIR"
+  mkdir -p "$PACKAGE_DIR"
+  cp "$BIN_DIR/$BIN_NAME" "$PACKAGE_DIR/$BIN_NAME"
+  cp README.md LICENSE "$PACKAGE_DIR/" 2>/dev/null || true
+  cp docs/install.md "$PACKAGE_DIR/INSTALL.md"
+
+  ARCHIVE_PATH="$DIST_DIR/$PACKAGE_NAME.$ARCHIVE_EXT"
+  rm -f "$ARCHIVE_PATH"
+  if [[ "$ARCHIVE_EXT" == "zip" ]]; then
+    create_zip_archive "$PACKAGE_DIR" "$ARCHIVE_PATH"
+  else
+    (
+      cd "$DIST_DIR"
+      tar -czf "$PACKAGE_NAME.tar.gz" "$PACKAGE_NAME"
+    )
+  fi
+
+  SHA256_VALUE="$(compute_sha256 "$ARCHIVE_PATH")"
+  printf '%s  %s\n' "$SHA256_VALUE" "$(basename "$ARCHIVE_PATH")" >> "$checksum_file"
+
+  CTX_VERIFY_RUN_SMOKE=auto "$ROOT_DIR/scripts/release/verify-artifact.sh" "$ARCHIVE_PATH" "$checksum_file"
+
+  MANIFEST_ITEMS+=("{\"target\":\"$TARGET\",\"package_name\":\"$PACKAGE_NAME\",\"archive\":\"$(basename "$ARCHIVE_PATH")\",\"archive_format\":\"$ARCHIVE_EXT\",\"binary\":\"$BIN_NAME\",\"sha256\":\"$SHA256_VALUE\",\"checksum_file\":\"SHA256SUMS\",\"install_doc\":\"INSTALL.md\",\"readme\":\"README.md\"}")
+  BUILT_ARCHIVES+=("$ARCHIVE_PATH")
+done
+
 {
-  "version": "$VERSION",
-  "target": "$TARGET",
-  "package_name": "$PACKAGE_NAME",
-  "archive": "$(basename "$ARCHIVE_PATH")",
-  "sha256": "$SHA256_VALUE",
-  "checksum_file": "SHA256SUMS",
-  "install_doc": "INSTALL.md",
-  "readme": "README.md",
-  "demo_fixture": "demo/fixtures/opencode-auth-lab",
-  "benchmark_report_markdown": "demo/fixtures/opencode-auth-lab/benchmarks/report.md",
-  "benchmark_report_json": "demo/fixtures/opencode-auth-lab/benchmarks/report.json"
-}
-EOF
+  printf '{\n'
+  printf '  "version": "%s",\n' "$VERSION"
+  printf '  "host_target": "%s",\n' "$HOST_TARGET"
+  printf '  "artifacts": [\n'
+  if [[ "${#MANIFEST_ITEMS[@]}" -gt 0 ]]; then
+    for i in "${!MANIFEST_ITEMS[@]}"; do
+      suffix=","
+      if [[ "$i" -eq "$((${#MANIFEST_ITEMS[@]} - 1))" ]]; then
+        suffix=""
+      fi
+      printf '    %s%s\n' "${MANIFEST_ITEMS[$i]}" "$suffix"
+    done
+  fi
+  printf '  ],\n'
+  printf '  "demo_fixture": "demo/fixtures/opencode-auth-lab",\n'
+  printf '  "benchmark_report_markdown": "demo/fixtures/opencode-auth-lab/benchmarks/report.md",\n'
+  printf '  "benchmark_report_json": "demo/fixtures/opencode-auth-lab/benchmarks/report.json"\n'
+  printf '}\n'
+} > "$MANIFEST_PATH"
 
-"$ROOT_DIR/scripts/release/verify-artifact.sh" "$ARCHIVE_PATH" "$DIST_DIR/SHA256SUMS"
-
-echo "Release artifact ready: $ARCHIVE_PATH"
-echo "Checksum file: $DIST_DIR/SHA256SUMS"
+for archive in "${BUILT_ARCHIVES[@]}"; do
+  echo "Release artifact ready: $archive"
+done
+echo "Checksum file: $checksum_file"
 echo "Release manifest: $MANIFEST_PATH"

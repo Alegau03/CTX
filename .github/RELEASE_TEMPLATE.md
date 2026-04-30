@@ -7,10 +7,13 @@
 ## Install
 
 ```bash
+shasum -a 256 -c SHA256SUMS
 tar -xzf ctx-<version>-<target>.tar.gz
 sudo install -m 0755 ctx-<version>-<target>/ctx /usr/local/bin/ctx
 ctx doctor
 ```
+
+For Windows, download the matching `.zip` release and add `ctx.exe` to your PATH.
 
 ## OpenCode Quick Start
 

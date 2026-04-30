@@ -1,5 +1,8 @@
 /target
 /dist
+/artifacts
+/*.tar.gz
+/*.zip
 /.ctx
 **/.ctx/
 /demo/fixtures/opencode-auth-lab/opencode.json

@@ -663,8 +663,9 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(build_script.contains("build --release"));
     assert!(build_script.contains("SHA256SUMS"));
     assert!(build_script.contains("tar"));
+    assert!(build_script.contains("CTX_TARGETS"));
+    assert!(build_script.contains("zip"));
     assert!(build_script.contains("release-manifest.json"));
-    assert!(build_script.contains("opencode-smoke.sh"));
     assert!(build_script.contains("verify-artifact.sh"));
     assert!(smoke_script.contains("doctor"));
     assert!(smoke_script.contains("mcp stdio"));
