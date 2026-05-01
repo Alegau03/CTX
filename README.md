@@ -9,8 +9,9 @@ CTX helps OpenCode work with less prompt noise by turning project rules, code st
 ## Contents
 
 - [What CTX Is](#what-ctx-is)
-- [Proof From The Demo Fixture](#proof-from-the-demo-fixture)
+- [Install CTX](#install-ctx)
 - [OpenCode-First Usage](#opencode-first-usage)
+- [Proof From The Demo Fixture](#proof-from-the-demo-fixture)
 - [What Works Today](#what-works-today)
 - [How It Works](#how-it-works)
 - [Video Demo](#demo-and-screenshots)
@@ -35,6 +36,70 @@ Modern coding agents waste context on things that are useful once but expensive 
 | Agent integration | Wrapper commands outside the host | OpenCode-native `/ctx-*` commands and local MCP tools |
 
 CTX is not another agent launcher. OpenCode keeps the selected model, provider, plugins, and normal workflow. CTX sits underneath as a local context layer.
+
+## Install CTX
+
+Current install support:
+
+- macOS Apple Silicon: prebuilt GitHub Release archive
+- macOS Intel, Linux, Windows: source install for now
+
+### Fastest Path: macOS Apple Silicon
+
+Download the latest assets from [GitHub Releases](https://github.com/Alegau03/CTX/releases), then run:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+tar -xzf ctx-0.1.0-aarch64-apple-darwin.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+If you prefer a system-wide install, replace the last two lines with:
+
+```bash
+sudo install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+```
+
+### Other Platforms: Source Install
+
+```bash
+git clone https://github.com/Alegau03/CTX.git
+cd CTX
+cargo install --locked --path crates/ctx-cli
+```
+
+Verify:
+
+```bash
+ctx help
+ctx doctor
+```
+
+For more install details, including release verification notes, see [docs/install.md](docs/install.md).
+
+## OpenCode-First Usage
+
+Once `ctx` is installed, move into any project and enable CTX:
+
+```bash
+cd /path/to/your/project
+ctx init
+ctx index
+ctx opencode install
+opencode
+```
+
+Inside OpenCode, start with:
+
+```text
+/ctx
+```
+
+Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-prune-logs <shell command>`, and benchmark commands without leaving OpenCode.
+
+For full usage, examples, and expected output, see [guide.md](guide.md).
 
 ## Proof From The Demo Fixture
 
@@ -72,47 +137,6 @@ External validation completed:
   - query coverage `markdown=1.00`, `graph=0.89`
   - success rate `markdown=0.50`, `graph=1.00`
   - quality wins `markdown=0`, `graph=1`, `ties=0`
-
-## OpenCode-First Usage
-
-Current release archive support:
-
-- macOS Apple Silicon: GitHub Release archive
-- macOS Intel, Linux, Windows: source install for now
-
-Install the current macOS Apple Silicon release from [GitHub Releases](https://github.com/Alegau03/CTX/releases):
-
-```bash
-shasum -a 256 -c SHA256SUMS
-tar -xzf ctx-0.1.0-aarch64-apple-darwin.tar.gz
-sudo install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
-```
-
-For macOS Intel, Linux, and Windows, install from source for now:
-
-```bash
-cargo install --locked --path crates/ctx-cli
-```
-
-After `ctx` is installed, move into any project and enable CTX:
-
-```bash
-cd /path/to/your/project
-ctx init
-ctx index
-ctx opencode install
-opencode
-```
-
-Inside OpenCode, start with:
-
-```text
-/ctx
-```
-
-Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-prune-logs <shell command>`, and benchmark commands without leaving OpenCode.
-
-For full usage, examples, and expected output, see [guide.md](guide.md).
 
 ## What Works Today
 
@@ -165,7 +189,7 @@ Graph Memory is CTX's structured replacement for repeatedly loading full project
 
 Demo Video on OpenCode on a example project:
 
-- [![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/0.jpg)](https://youtu.be/gFwGb7sCzKI)
+- [Watch the demo on YouTube](https://youtu.be/gFwGb7sCzKI)
 
 
 ## Security
