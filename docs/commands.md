@@ -11,6 +11,20 @@ Use it when you want:
 
 For the end-to-end workflow, see [guide.md](../guide.md).
 
+## OpenCode-Only Commands
+
+Some workflows exist only as OpenCode slash commands. They intentionally do not add public CLI subcommands, because CTX's product surface is OpenCode-first and the host should stay in control.
+
+OpenCode-only commands in this document:
+
+- `/ctx-compare <task>`
+- `/ctx-plan <task>`
+- `/ctx-toolbook-import <name> <file>`
+- `/ctx-toolbook-search <name> "<query>"`
+- `/ctx-toolbook-list <name>`
+- `/ctx-toolbook-pack <name> "<task>"`
+- `/ctx-learn <key> "<body>"`
+
 ## Global Options
 
 These options can be used before most CLI commands:
@@ -111,6 +125,25 @@ ctx retrieve "refresh token auth failure" --limit 8
 ```bash
 ctx pack "fix refresh token rotation" --json
 ctx pack "fix failing auth test" --attach /tmp/fail.log --json
+```
+
+### `/ctx-compare <task>` OpenCode-only
+
+- CLI equivalent: none; it uses `ctx pack <task> --json` internally from OpenCode.
+- What it does: shows a compact before-vs-CTX table using `original_estimated_tokens`, `packed_tokens`, `reduction_pct`, and `pack_path`.
+
+```text
+/ctx-compare fix auth refresh regression
+```
+
+### `/ctx-plan <task>` OpenCode-only
+
+- CLI equivalent: none; it combines existing CTX primitives from inside OpenCode.
+- What it does: builds a graph-backed implementation plan using retrieval, graph query, memory search, and a compact context pack.
+- Output includes: task summary, intent, relevant context, token efficiency, implementation steps, suggested tests, and the first action.
+
+```text
+/ctx-plan add a registration with email button in the login menu
 ```
 
 ### `ctx ask <query>`
@@ -224,6 +257,57 @@ ctx memory delete testing.always_run
 
 ```bash
 ctx memory export --to AGENTS.generated.md --scope project --limit 200
+```
+
+## Toolbooks OpenCode-only
+
+Toolbooks are scoped graph memory for large CLI manuals, runbooks, and cheat sheets. They are meant to replace putting huge command manuals into `AGENTS.md`.
+
+### `/ctx-toolbook-import <name> <file>`
+
+- CLI equivalent: none as a public command; internally uses `ctx memory import --scope toolbook:<name> --source toolbook`.
+- What it does: imports a markdown manual into a scoped toolbook.
+
+```text
+/ctx-toolbook-import glab docs/glab.md
+```
+
+### `/ctx-toolbook-search <name> "<query>"`
+
+- CLI equivalent: none as a public command; internally uses `ctx memory search <query> --scope toolbook:<name>`.
+- What it does: retrieves only the relevant manual entries for a question.
+
+```text
+/ctx-toolbook-search glab "merge request create"
+```
+
+### `/ctx-toolbook-list <name>`
+
+- CLI equivalent: none as a public command; internally uses `ctx memory list --scope toolbook:<name>`.
+- What it does: lists stored directives for one toolbook.
+
+```text
+/ctx-toolbook-list glab
+```
+
+### `/ctx-toolbook-pack <name> "<task>"`
+
+- CLI equivalent: none as a public command; internally combines toolbook memory search with `ctx pack`.
+- What it does: retrieves relevant toolbook guidance and a task context pack in one OpenCode workflow.
+
+```text
+/ctx-toolbook-pack glab "create merge request for auth fix"
+```
+
+## Learning OpenCode-only
+
+### `/ctx-learn <key> "<body>"`
+
+- CLI equivalent: none as a public command; internally uses `ctx memory set <key> <body> --scope project --source learned`.
+- What it does: stores a reusable lesson learned during real work so future `/ctx-memory-search` and `/ctx-pack` calls can find it.
+
+```text
+/ctx-learn auth.refresh_regression "When auth refresh fails, check token rotation and stale session flags first."
 ```
 
 ## Graph Commands
@@ -345,8 +429,11 @@ Then inside OpenCode:
 /ctx-doctor
 /ctx-memory-bootstrap
 /ctx-memory-search auth
+/ctx-plan fix auth refresh regression
 /ctx-retrieve refresh token auth failure
 /ctx-pack fix auth refresh regression
+/ctx-compare fix auth refresh regression
 /ctx-prune-logs npm run test:auth
+/ctx-learn auth.refresh_regression "Check token rotation and stale session flags before changing tests."
 /ctx-stats
 ```

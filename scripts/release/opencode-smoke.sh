@@ -18,9 +18,13 @@ printf 'fn main() { println!("ctx"); }\n' > "$SMOKE_DIR/src/main.rs"
 
 test -f "$SMOKE_DIR/opencode.json"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-pack.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-plan.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-compare.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-doctor.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-memory-bootstrap.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-memory-search.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-toolbook-import.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-learn.md"
 test -f "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md"
 
 grep '"$schema": "https://opencode.ai/config.json"' "$SMOKE_DIR/opencode.json" >/dev/null
@@ -32,10 +36,17 @@ grep 'stdio' "$SMOKE_DIR/opencode.json" >/dev/null
 
 grep 'description:' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
 grep 'pack "$ARGUMENTS"' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
+grep 'CTX Plan' "$SMOKE_DIR/.opencode/commands/ctx-plan.md" >/dev/null
+grep 'retrieve "$ARGUMENTS" --limit 8 --json' "$SMOKE_DIR/.opencode/commands/ctx-plan.md" >/dev/null
+grep 'Before vs CTX' "$SMOKE_DIR/.opencode/commands/ctx-compare.md" >/dev/null
+grep 'toolbook:$1' "$SMOKE_DIR/.opencode/commands/ctx-toolbook-import.md" >/dev/null
+grep -- '--source learned' "$SMOKE_DIR/.opencode/commands/ctx-learn.md" >/dev/null
 grep 'deterministic CTX menu command' "$SMOKE_DIR/.opencode/commands/ctx.md" >/dev/null
 grep 'ready: true' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
 grep 'do not inspect files manually' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
 grep 'Automatic CTX Usage' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
+grep '/ctx-plan' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
+grep '/ctx-toolbook-import' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 grep 'Do not revive wrapper-style workflows' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 
 command_count="$(find "$SMOKE_DIR/.opencode/commands" -type f | wc -l | tr -d ' ')"

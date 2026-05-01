@@ -335,6 +335,58 @@ Then print one compact stats line with `packed_tokens`, `reduction_pct`, and `pa
 Keep any follow-up explanation to at most one short sentence."#,
         },
         HostActionTemplate {
+            slug: "ctx-compare",
+            description: "Context | Show before-vs-CTX context density for a task",
+            body: r#"OpenCode-only CTX comparison for this task:
+
+$ARGUMENTS
+
+!`{{CTX_CMD}} pack "$ARGUMENTS" --json`
+
+Print a compact `Before vs CTX` table first using:
+- `original_estimated_tokens` as the broad-context estimate
+- `packed_tokens` as the CTX task pack size
+- `reduction_pct` as the reduction
+- `pack_path` as the saved artifact
+
+Then list included and excluded categories in one compact block.
+Do not claim benchmark quality from this command; it is a task-pack density check."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-plan",
+            description: "Planning | Build a graph-backed low-token implementation plan",
+            body: r#"OpenCode-only CTX implementation plan for this task:
+
+$ARGUMENTS
+
+Retrieval:
+!`{{CTX_CMD}} retrieve "$ARGUMENTS" --limit 8 --json`
+
+Relevant memory:
+!`{{CTX_CMD}} memory search "$ARGUMENTS" --json`
+
+Graph:
+!`{{CTX_CMD}} graph query "$ARGUMENTS"`
+
+Context pack:
+!`{{CTX_CMD}} pack "$ARGUMENTS" --json`
+
+Produce a concise `CTX Plan` with exactly these sections:
+- `Task`: one-sentence restatement
+- `Intent`: classify the work, for example feature, bugfix, refactor, test, docs, or investigation
+- `Relevant Context`: files, symbols, memory directives, and relationships from the CTX outputs only
+- `Token Efficiency`: use `original_estimated_tokens`, `packed_tokens`, `reduction_pct`, and `pack_path`
+- `Plan`: 4-7 ordered implementation steps
+- `Suggested Tests`: focused verification commands or test files inferred from CTX outputs
+- `Suggested First Action`: the first file or command OpenCode should use next
+
+Rules:
+- do not inspect files manually while planning
+- do not implement code
+- do not invent files that are not supported by CTX output
+- keep the result compact and immediately actionable"#,
+        },
+        HostActionTemplate {
             slug: "ctx-retrieve",
             description: "Context | Search CTX retrieval results for a query",
             body: r#"Use CTX retrieval for this query:
@@ -537,6 +589,104 @@ Run the matching `{{CTX_CMD}} memory export` command.
 Then confirm the output file path and the number of exported directives."#,
         },
         HostActionTemplate {
+            slug: "ctx-toolbook-import",
+            description: "Toolbooks | Import a CLI manual or playbook into graph memory",
+            body: r#"Import an external CLI manual, runbook, or tool cheat sheet as an OpenCode-only CTX toolbook.
+
+Arguments:
+- `$1`: toolbook name, for example `glab`
+- `$2`: markdown file path
+
+Usage:
+- `/ctx-toolbook-import glab docs/glab.md`
+
+If `$1` or `$2` is missing, stop and show the usage above.
+
+!`{{CTX_CMD}} memory import --from "$2" --scope "toolbook:$1" --source toolbook --prefix "toolbook.$1"`
+
+Show the import result first.
+Then say that future searches should use `/ctx-toolbook-search $1 "<query>"` instead of loading the whole manual into AGENTS.md."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-toolbook-search",
+            description: "Toolbooks | Search a stored CLI/tool manual without prompt bloat",
+            body: r#"Search an OpenCode-only CTX toolbook.
+
+Arguments:
+- `$1`: toolbook name, for example `glab`
+- `$2`: quoted query, for example `"merge request create"`
+
+Usage:
+- `/ctx-toolbook-search glab "merge request create"`
+
+If `$1` or `$2` is missing, stop and show the usage above.
+
+!`{{CTX_CMD}} memory search "$2" --scope "toolbook:$1" --json`
+
+Show only the matching directives in a compact, predictable format.
+Do not summarize the full manual or add unrelated CLI flags."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-toolbook-list",
+            description: "Toolbooks | List stored directives for one toolbook",
+            body: r#"List an OpenCode-only CTX toolbook.
+
+Arguments:
+- `$1`: toolbook name, for example `glab`
+- `$2`: optional limit
+
+Usage:
+- `/ctx-toolbook-list glab`
+- `/ctx-toolbook-list glab 30`
+
+If `$1` is missing, stop and show the usage above.
+
+Run `{{CTX_CMD}} memory list --scope "toolbook:$1"` and add `--limit "$2"` only when a limit was provided.
+Show the stored directives first, then add one short sentence about how to search them."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-toolbook-pack",
+            description: "Toolbooks | Pack task context plus relevant toolbook guidance",
+            body: r#"Pack task context while also retrieving relevant OpenCode-only CTX toolbook guidance.
+
+Arguments:
+- `$1`: toolbook name, for example `glab`
+- `$2`: quoted task/query, for example `"create merge request for auth fix"`
+
+Usage:
+- `/ctx-toolbook-pack glab "create merge request for auth fix"`
+
+If `$1` or `$2` is missing, stop and show the usage above.
+
+Toolbook matches:
+!`{{CTX_CMD}} memory search "$2" --scope "toolbook:$1" --json`
+
+Task context:
+!`{{CTX_CMD}} pack "$2" --json`
+
+Show the relevant toolbook matches first, then print `compact_context`, then a single metadata line with `packed_tokens`, `reduction_pct`, and `pack_path`.
+Do not load or restate the full manual."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-learn",
+            description: "Learning | Store a reusable project lesson in graph memory",
+            body: r#"Store a reusable OpenCode-only CTX lesson in graph memory.
+
+Arguments:
+- `$1`: memory key, for example `auth.refresh_regression`
+- `$2`: quoted lesson body
+
+Usage:
+- `/ctx-learn auth.refresh_regression "When auth refresh fails, check token rotation and stale session flags first."`
+
+If `$1` or `$2` is missing, stop and show the usage above.
+
+!`{{CTX_CMD}} memory set "$1" "$2" --scope project --source learned`
+
+Confirm the stored key first.
+Then say it can be found later with `/ctx-memory-search <topic>`."#,
+        },
+        HostActionTemplate {
             slug: "ctx-benchmark-memory-ab",
             description: "Benchmark | Compare markdown memory vs CTX graph memory",
             body: r#"Run the CTX memory A/B benchmark in the current repository.
@@ -648,7 +798,11 @@ For normal prompts, prefer CTX-first behavior:
 7. For context construction, prefer `/ctx-pack` or `/ctx-ask` before assembling large prompts manually.
 8. For prompt scaffolding, use `/ctx-hook`.
 9. For ambiguity about likely scope or intent, use `/ctx-explain`.
-10. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
+10. For implementation planning, use `/ctx-plan` to combine retrieval, graph, memory, and pack signals before editing.
+11. For quick before-vs-packed context density, use `/ctx-compare`.
+12. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
+13. For reusable lessons learned during work, use `/ctx-learn`.
+14. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
 
 ## Memory And Rules
 
@@ -656,6 +810,7 @@ For normal prompts, prefer CTX-first behavior:
 - Use `/ctx-memory-bootstrap` to migrate conventional markdown files into graph memory without leaving OpenCode.
 - Only export markdown memory when compatibility or auditing is explicitly needed.
 - Prefer updating graph memory directives over adding new large instruction files.
+- Treat toolbooks as scoped graph memory for external manuals, not as project-wide rules.
 
 ## Retrieval Discipline
 

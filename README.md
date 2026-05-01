@@ -97,7 +97,7 @@ Inside OpenCode, start with:
 /ctx
 ```
 
-Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-prune-logs <shell command>`, and benchmark commands without leaving OpenCode.
+Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-compare`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
 
 For full usage, examples, and expected output, see [guide.md](guide.md).
 
@@ -145,7 +145,11 @@ External validation completed:
 | OpenCode integration | `ctx opencode install` writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md` |
 | Command menu | `/ctx` opens a categorized CTX command center inside OpenCode |
 | Graph memory | Bootstrap/import/search/list/get/set/delete/export project directives, including compatibility seeds from `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions |
+| Planning | `/ctx-plan <task>` combines graph, memory, retrieval, and token-reduced pack signals into an implementation plan |
 | Context packing | Builds compact task packs with graph, memory, diff, failure, and attachment signals |
+| Context comparison | `/ctx-compare <task>` shows before-vs-CTX token density for one task pack |
+| Toolbooks | OpenCode-only `/ctx-toolbook-*` commands store and search large CLI manuals without putting them in `AGENTS.md` |
+| Learning | `/ctx-learn <key> "<body>"` stores reusable project lessons in graph memory |
 | Retrieval | Hybrid graph, FTS, snippets, symbols, and semantic ranking with local fallback |
 | Pruning | Deterministic log and diff pruning with parser-aware diagnostics |
 | MCP | Local stdio MCP plus localhost HTTP JSON-RPC runtime |

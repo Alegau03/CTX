@@ -544,9 +544,13 @@ These are the commands most teams will use every day:
 | `/ctx-doctor` | `ctx doctor` | Checks repo readiness and privacy defaults |
 | `/ctx-memory-bootstrap` | `ctx memory bootstrap` | Imports conventional rule files into graph memory |
 | `/ctx-memory-search <query>` | `ctx memory search <query>` | Finds relevant project directives |
+| `/ctx-plan <task>` | OpenCode-only | Builds a graph-backed low-token implementation plan |
 | `/ctx-retrieve <query>` | `ctx retrieve <query>` | Retrieves relevant code, symbols, snippets, and memory |
 | `/ctx-pack <task>` | `ctx pack <task>` | Builds a compact task-specific context pack |
+| `/ctx-compare <task>` | OpenCode-only | Shows before-vs-CTX context density for one task |
 | `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs to the root cause |
 | `/ctx-stats` | `ctx stats` | Shows latest local usage and token-efficiency stats |
+
+For large CLI manuals or cheat sheets, use the OpenCode-only Toolbooks commands in [docs/commands.md](docs/commands.md) instead of putting the whole manual in `AGENTS.md`.
 
 For the complete command surface, syntax details, and examples, see [docs/commands.md](docs/commands.md).

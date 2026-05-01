@@ -424,7 +424,7 @@ fn opencode_install_creates_project_config_and_command_files() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["commands_written"], 31);
+    assert_eq!(report["commands_written"], 38);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -474,6 +474,8 @@ fn opencode_install_creates_project_config_and_command_files() {
         "ctx-explain.md",
         "ctx-retrieve.md",
         "ctx-graph-query.md",
+        "ctx-plan.md",
+        "ctx-compare.md",
         "ctx-prune-logs.md",
         "ctx-prune-diff.md",
         "ctx-opencode-install.md",
@@ -488,6 +490,11 @@ fn opencode_install_creates_project_config_and_command_files() {
         "ctx-memory-import.md",
         "ctx-memory-bootstrap.md",
         "ctx-memory-export.md",
+        "ctx-toolbook-import.md",
+        "ctx-toolbook-search.md",
+        "ctx-toolbook-list.md",
+        "ctx-toolbook-pack.md",
+        "ctx-learn.md",
         "ctx-benchmark-memory-ab.md",
         "ctx-benchmark-memory-suite.md",
         "ctx-stats.md",
@@ -529,6 +536,36 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(prune_logs_command.contains("Do not treat `$ARGUMENTS` as a topic"));
     assert!(prune_logs_command.contains("prune logs --max-lines 50"));
     assert!(prune_logs_command.contains("--repo-root"));
+
+    let compare_command =
+        std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-compare.md"))
+            .expect("read compare command");
+    assert!(compare_command.contains("OpenCode-only"));
+    assert!(compare_command.contains("pack \"$ARGUMENTS\" --json"));
+    assert!(compare_command.contains("original_estimated_tokens"));
+    assert!(compare_command.contains("reduction_pct"));
+
+    let plan_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
+        .expect("read plan command");
+    assert!(plan_command.contains("OpenCode-only"));
+    assert!(plan_command.contains("retrieve \"$ARGUMENTS\" --limit 8 --json"));
+    assert!(plan_command.contains("memory search \"$ARGUMENTS\" --json"));
+    assert!(plan_command.contains("graph query \"$ARGUMENTS\""));
+    assert!(plan_command.contains("pack \"$ARGUMENTS\" --json"));
+    assert!(plan_command.contains("Token Efficiency"));
+
+    let toolbook_import =
+        std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-toolbook-import.md"))
+            .expect("read toolbook import command");
+    assert!(toolbook_import.contains("toolbook:$1"));
+    assert!(toolbook_import.contains("memory import"));
+    assert!(toolbook_import.contains("--source toolbook"));
+
+    let learn_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-learn.md"))
+        .expect("read learn command");
+    assert!(learn_command.contains("OpenCode-only"));
+    assert!(learn_command.contains("memory set"));
+    assert!(learn_command.contains("--source learned"));
 }
 
 #[test]
@@ -630,6 +667,10 @@ fn legacy_wrapper_commands_are_removed_from_public_cli() {
     for args in [
         vec!["wrap", "agent", "--prompt", "explain auth failure"],
         vec!["opencode", "run", "explain diff"],
+        vec!["compare", "fix auth refresh regression"],
+        vec!["plan", "add registration button to login menu"],
+        vec!["toolbook", "search", "glab", "mr create"],
+        vec!["learn", "auth.refresh", "Clear stale re-auth flag"],
     ] {
         Command::cargo_bin("ctx")
             .expect("bin")
@@ -671,6 +712,10 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(smoke_script.contains("mcp stdio"));
     assert!(opencode_smoke.contains("opencode install"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-pack.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-plan.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-compare.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-toolbook-import.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-learn.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-bootstrap.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-search.md"));
     assert!(opencode_smoke.contains(".opencode/instructions/ctx-host-first.md"));
@@ -691,8 +736,13 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("scripts/release/verify-artifact.sh"));
     assert!(install_docs.contains("release-manifest.json"));
     assert!(readme.contains("guide.md"));
+    assert!(readme.contains("Toolbooks"));
+    assert!(readme.contains("/ctx-plan"));
+    assert!(readme.contains("/ctx-compare"));
+    assert!(readme.contains("/ctx-learn"));
     assert!(guide.contains("OpenCode-First Workflow"));
     assert!(guide.contains("Command Reference"));
+    assert!(guide.contains("docs/commands.md"));
 }
 
 #[test]

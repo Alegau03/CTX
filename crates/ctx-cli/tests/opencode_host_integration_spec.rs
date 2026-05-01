@@ -75,6 +75,8 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
         "ctx-explain.md",
         "ctx-retrieve.md",
         "ctx-graph-query.md",
+        "ctx-plan.md",
+        "ctx-compare.md",
         "ctx-prune-logs.md",
         "ctx-prune-diff.md",
         "ctx-opencode-install.md",
@@ -89,6 +91,11 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
         "ctx-memory-import.md",
         "ctx-memory-bootstrap.md",
         "ctx-memory-export.md",
+        "ctx-toolbook-import.md",
+        "ctx-toolbook-search.md",
+        "ctx-toolbook-list.md",
+        "ctx-toolbook-pack.md",
+        "ctx-learn.md",
         "ctx-benchmark-memory-ab.md",
         "ctx-benchmark-memory-suite.md",
         "ctx-stats.md",
@@ -148,6 +155,33 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(stats_command.contains("Show the stats payload first"));
     assert!(stats_command.contains("one short sentence"));
 
+    let compare_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-compare.md"))
+        .expect("ctx-compare command");
+    assert!(compare_command.contains("OpenCode-only"));
+    assert!(compare_command.contains("Before vs CTX"));
+    assert!(compare_command.contains("original_estimated_tokens"));
+
+    let plan_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
+        .expect("ctx-plan command");
+    assert!(plan_command.contains("OpenCode-only"));
+    assert!(plan_command.contains("retrieve \"$ARGUMENTS\" --limit 8 --json"));
+    assert!(plan_command.contains("memory search \"$ARGUMENTS\" --json"));
+    assert!(plan_command.contains("graph query \"$ARGUMENTS\""));
+    assert!(plan_command.contains("pack \"$ARGUMENTS\" --json"));
+    assert!(plan_command.contains("Suggested First Action"));
+
+    let toolbook_pack =
+        fs::read_to_string(tmp.path().join(".opencode/commands/ctx-toolbook-pack.md"))
+            .expect("ctx-toolbook-pack command");
+    assert!(toolbook_pack.contains("toolbook:$1"));
+    assert!(toolbook_pack.contains("memory search"));
+    assert!(toolbook_pack.contains("pack \"$2\" --json"));
+
+    let learn_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-learn.md"))
+        .expect("ctx-learn command");
+    assert!(learn_command.contains("memory set \"$1\" \"$2\""));
+    assert!(learn_command.contains("--source learned"));
+
     let menu =
         fs::read_to_string(tmp.path().join(".opencode/commands/ctx.md")).expect("ctx menu command");
     assert!(menu.contains("deterministic CTX menu command"));
@@ -163,6 +197,10 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(instructions.contains("Automatic CTX Usage"));
     assert!(instructions.contains("/ctx-memory-bootstrap"));
     assert!(instructions.contains("/ctx-memory-search"));
+    assert!(instructions.contains("/ctx-toolbook-import"));
+    assert!(instructions.contains("/ctx-plan"));
+    assert!(instructions.contains("/ctx-compare"));
+    assert!(instructions.contains("/ctx-learn"));
 
     let index_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-index.md"))
         .expect("ctx-index command");
