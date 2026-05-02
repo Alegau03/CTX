@@ -148,3 +148,29 @@ const cleanupSession = () => {
     assert!(slices[0].content.contains("const hydrateSession = () =>"));
     assert!(!slices[0].content.contains("cleanupSession"));
 }
+
+#[test]
+fn extracts_markdown_headings_as_symbols() {
+    let code = r#"
+# Docker Compose
+
+Intro text.
+
+## Services
+
+- api
+- redis
+"#;
+
+    let symbols = extract_symbols(code, "docs/runbook.md");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "Docker Compose" && s.kind == SymbolKind::Module)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "Services" && s.kind == SymbolKind::Module)
+    );
+}

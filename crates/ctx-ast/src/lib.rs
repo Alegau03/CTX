@@ -387,6 +387,7 @@ fn fallback_raw_symbols(code: &str, file_path: &str) -> Vec<RawSymbol> {
     .expect("regex");
     let js_test =
         Regex::new(r#"(?m)^\s*(?:test|it|describe)\(\s*["']([^"']+)["']\s*,"#).expect("regex");
+    let md_heading = Regex::new(r"(?m)^(#{1,3})\s+(.+?)\s*$").expect("regex");
     let mut out = Vec::new();
 
     for captures in rust_fn.captures_iter(code) {
@@ -557,6 +558,35 @@ fn fallback_raw_symbols(code: &str, file_path: &str) -> Vec<RawSymbol> {
             start_line: line_of_byte(code, m.start()),
             end_line: line_of_byte(code, m.end()),
         });
+    }
+
+    if file_path.ends_with(".md") {
+        for captures in md_heading.captures_iter(code) {
+            let Some(m) = captures.get(0) else {
+                continue;
+            };
+            let name = captures
+                .get(2)
+                .map(|v| v.as_str())
+                .unwrap_or_default()
+                .trim();
+            if name.is_empty() {
+                continue;
+            }
+
+            out.push(RawSymbol {
+                symbol: Symbol {
+                    file_path: file_path.to_string(),
+                    name: name.to_string(),
+                    kind: SymbolKind::Module,
+                    signature: m.as_str().trim().to_string(),
+                },
+                start_byte: m.start(),
+                end_byte: m.end(),
+                start_line: line_of_byte(code, m.start()),
+                end_line: line_of_byte(code, m.end()),
+            });
+        }
     }
 
     out

@@ -59,6 +59,59 @@ export class AuthService {
 }
 
 #[test]
+fn index_includes_runbook_and_config_file_types() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::create_dir_all(tmp.path().join("docs")).expect("mkdir docs");
+    fs::create_dir_all(tmp.path().join("ops")).expect("mkdir ops");
+    fs::create_dir_all(tmp.path().join("scripts")).expect("mkdir scripts");
+    fs::create_dir_all(tmp.path().join("config")).expect("mkdir config");
+    fs::create_dir_all(tmp.path().join("fixtures")).expect("mkdir fixtures");
+
+    fs::write(
+        tmp.path().join("docs/docker-runbook.md"),
+        "# Docker Compose\nBring up services with docker compose up -d.\n",
+    )
+    .expect("write markdown");
+    fs::write(
+        tmp.path().join("ops/docker-compose.yml"),
+        "services:\n  api:\n    image: busybox\n",
+    )
+    .expect("write yaml");
+    fs::write(
+        tmp.path().join("scripts/deploy.sh"),
+        "#!/usr/bin/env bash\necho deploy\n",
+    )
+    .expect("write shell");
+    fs::write(
+        tmp.path().join("config/settings.toml"),
+        "[server]\nport = 3000\n",
+    )
+    .expect("write toml");
+    fs::write(
+        tmp.path().join("fixtures/manifest.json"),
+        "{\n  \"name\": \"ctx\"\n}\n",
+    )
+    .expect("write json");
+
+    let count = run_index(tmp.path(), &[]).expect("index");
+    assert_eq!(count, 5);
+
+    let docker_matches = run_graph_query(tmp.path(), "docker").expect("docker query");
+    assert!(
+        docker_matches
+            .iter()
+            .any(|m| m.ends_with("docs/docker-runbook.md"))
+    );
+    assert!(
+        docker_matches
+            .iter()
+            .any(|m| m.ends_with("ops/docker-compose.yml"))
+    );
+}
+
+#[test]
 fn run_pack_returns_compact_context() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");

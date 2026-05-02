@@ -438,7 +438,7 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
         .cloned()
         .unwrap_or_default();
 
-    match name {
+    let result = match name {
         "get_relevant_context" => {
             let query = args
                 .get("query")
@@ -592,7 +592,21 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
             serde_json::to_value(report).context("failed to serialize diff report")
         }
         _ => bail!("unknown tool: {name}"),
-    }
+    }?;
+
+    wrap_tool_result(result)
+}
+
+fn wrap_tool_result(value: Value) -> Result<Value> {
+    let text = serde_json::to_string_pretty(&value).context("failed to serialize tool result")?;
+    Ok(json!({
+        "content": [{
+            "type": "text",
+            "text": text
+        }],
+        "structuredContent": value,
+        "isError": false
+    }))
 }
 
 fn resources_read(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {

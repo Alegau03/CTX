@@ -141,3 +141,33 @@ sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
             .any(|hit| hit.reason.contains("fallback_from=onnx"))
     );
 }
+
+#[test]
+fn retrieval_returns_markdown_runbook_context() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+
+    fs::create_dir_all(tmp.path().join("docs")).expect("mkdir");
+    fs::write(
+        tmp.path().join("docs/docker-runbook.md"),
+        r#"
+# Docker Compose
+
+Use docker compose up -d to boot the local stack.
+
+## Services
+
+The api service depends on redis.
+"#,
+    )
+    .expect("write markdown");
+
+    run_index(tmp.path(), &[]).expect("index");
+
+    let hits = run_retrieve(tmp.path(), "docker compose", 5).expect("retrieve");
+    assert!(!hits.is_empty());
+    assert!(
+        hits.iter()
+            .any(|h| h.content.contains("Docker Compose") || h.content.contains("docker compose"))
+    );
+}

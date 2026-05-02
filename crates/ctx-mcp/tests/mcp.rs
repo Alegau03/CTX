@@ -224,9 +224,15 @@ fn tools_call_get_relevant_context_returns_pack_data() {
         }),
     );
 
-    assert!(response["result"]["packed_tokens"].as_u64().unwrap_or(0) > 0);
+    assert!(response["result"]["content"].is_array());
     assert!(
-        response["result"]["compact_context"]
+        response["result"]["structuredContent"]["packed_tokens"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
+    assert!(
+        response["result"]["structuredContent"]["compact_context"]
             .as_str()
             .unwrap_or_default()
             .contains("query:")
@@ -256,7 +262,7 @@ fn tools_call_memory_set_and_list_work() {
         }),
     );
     assert_eq!(
-        set_response["result"]["directive"]["key"]
+        set_response["result"]["structuredContent"]["directive"]["key"]
             .as_str()
             .unwrap_or_default(),
         "testing.always_run"
@@ -274,7 +280,8 @@ fn tools_call_memory_set_and_list_work() {
             }
         }),
     );
-    let directives = list_response["result"]["directives"]
+    assert!(list_response["result"]["content"].is_array());
+    let directives = list_response["result"]["structuredContent"]["directives"]
         .as_array()
         .expect("directives array");
     assert!(!directives.is_empty());
@@ -302,9 +309,13 @@ fn tools_call_memory_bootstrap_and_search_work() {
             }
         }),
     );
-    assert_eq!(bootstrap["result"]["report"]["imported_files"], 1);
+    assert!(bootstrap["result"]["content"].is_array());
+    assert_eq!(
+        bootstrap["result"]["structuredContent"]["report"]["imported_files"],
+        1
+    );
     assert!(
-        bootstrap["result"]["report"]["imported_directives"]
+        bootstrap["result"]["structuredContent"]["report"]["imported_directives"]
             .as_u64()
             .unwrap_or(0)
             >= 2
@@ -326,7 +337,7 @@ fn tools_call_memory_bootstrap_and_search_work() {
             }
         }),
     );
-    let directives = search["result"]["directives"]
+    let directives = search["result"]["structuredContent"]["directives"]
         .as_array()
         .expect("directives array");
     assert!(!directives.is_empty());

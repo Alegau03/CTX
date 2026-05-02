@@ -153,7 +153,7 @@ External validation completed:
 | Retrieval | Hybrid graph, FTS, snippets, symbols, and semantic ranking with local fallback |
 | Pruning | Deterministic log and diff pruning with parser-aware diagnostics |
 | MCP | Local stdio MCP plus localhost HTTP JSON-RPC runtime |
-| Analysis | Rust, Python, TypeScript, and JavaScript symbol extraction and call/dependency enrichment |
+| Analysis | Rust, Python, TypeScript, JavaScript, Markdown runbooks, and common config/script files with symbol and dependency enrichment |
 | Benchmarks | Markdown-vs-graph memory A/B suite with Markdown and JSON reports |
 | Privacy | Local-only defaults, sensitive attachment blocking, and local audit logs |
 
