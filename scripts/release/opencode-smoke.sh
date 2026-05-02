@@ -20,6 +20,9 @@ test -f "$SMOKE_DIR/opencode.json"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-pack.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-plan.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-compare.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-gain.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-read.md"
+test -f "$SMOKE_DIR/.opencode/commands/ctx-run.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-doctor.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-memory-bootstrap.md"
 test -f "$SMOKE_DIR/.opencode/commands/ctx-memory-search.md"
@@ -39,6 +42,9 @@ grep 'pack "$ARGUMENTS"' "$SMOKE_DIR/.opencode/commands/ctx-pack.md" >/dev/null
 grep 'CTX Plan' "$SMOKE_DIR/.opencode/commands/ctx-plan.md" >/dev/null
 grep 'retrieve "$ARGUMENTS" --limit 8 --json' "$SMOKE_DIR/.opencode/commands/ctx-plan.md" >/dev/null
 grep 'Before vs CTX' "$SMOKE_DIR/.opencode/commands/ctx-compare.md" >/dev/null
+grep -- '--json stats --history 20' "$SMOKE_DIR/.opencode/commands/ctx-gain.md" >/dev/null
+grep 'host-read' "$SMOKE_DIR/.opencode/commands/ctx-read.md" >/dev/null
+grep -- '--json host-run "$ARGUMENTS"' "$SMOKE_DIR/.opencode/commands/ctx-run.md" >/dev/null
 grep 'toolbook:$1' "$SMOKE_DIR/.opencode/commands/ctx-toolbook-import.md" >/dev/null
 grep -- '--source learned' "$SMOKE_DIR/.opencode/commands/ctx-learn.md" >/dev/null
 grep 'deterministic CTX menu command' "$SMOKE_DIR/.opencode/commands/ctx.md" >/dev/null
@@ -46,6 +52,9 @@ grep 'ready: true' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
 grep 'do not inspect files manually' "$SMOKE_DIR/.opencode/commands/ctx-doctor.md" >/dev/null
 grep 'Automatic CTX Usage' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 grep '/ctx-plan' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
+grep '/ctx-gain' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
+grep '/ctx-read' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
+grep '/ctx-run' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 grep '/ctx-toolbook-import' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 grep 'Do not revive wrapper-style workflows' "$SMOKE_DIR/.opencode/instructions/ctx-host-first.md" >/dev/null
 

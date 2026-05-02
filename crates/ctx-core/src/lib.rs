@@ -1,3 +1,7 @@
+mod command_run;
+mod index_cache;
+mod read_cache;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,13 +17,23 @@ use ctx_pack::{PackInput, PackResult, build_pack};
 use ctx_prune::{PruneReport, prune_diff, prune_logs};
 use ctx_semantic::{ChunkCandidate, SemanticBackendKind, SemanticEngineConfig, rank_chunks};
 use ctx_telemetry::{
-    PrivacyAuditEvent, StatsSnapshot, append_audit_line, append_privacy_audit_event,
-    write_latest_stats,
+    GainReport, PrivacyAuditEvent, StatsSnapshot, append_audit_line, append_privacy_audit_event,
+    build_gain_report, write_latest_stats,
 };
 use ctx_token::estimate_tokens;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
+
+pub use command_run::CommandRunReport;
+use command_run::run_command_capture;
+use index_cache::{
+    IndexCachePaths, IndexCacheReport, IndexedFileEntry, compute_fingerprint,
+    load_index_cache_state, load_latest_index_cache_report, save_index_cache_state,
+    write_index_cache_report,
+};
+use read_cache::run_cached_read;
+pub use read_cache::{ReadCacheReport, ReadMode};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ExplainResult {
@@ -174,6 +188,22 @@ pub fn run_prune_diff(input: &str, query: &str, max_lines: usize) -> PruneReport
     prune_diff(input, query, max_lines)
 }
 
+pub fn run_command(repo_root: &Path, command: &str) -> Result<CommandRunReport> {
+    let cfg = load_or_default_config(repo_root)?;
+    run_command_capture(repo_root, command, cfg.pruning.max_log_lines)
+}
+
+pub fn run_read(repo_root: &Path, path: &str, mode: ReadMode) -> Result<ReadCacheReport> {
+    let cfg = load_or_default_config(repo_root)?;
+    run_cached_read(
+        repo_root,
+        path,
+        mode,
+        cfg.security.exclude_sensitive_files,
+        &cfg.security.sensitive_patterns,
+    )
+}
+
 pub fn run_pack(
     repo_root: &Path,
     query: &str,
@@ -250,7 +280,19 @@ pub fn run_pack(
         budget: budget.unwrap_or(cfg.general.default_budget),
     };
 
-    let result = write_pack_artifact(repo_root, build_pack(&pack_input))?;
+    let mut pack_result = build_pack(&pack_input);
+    if let Some(index_report) = load_latest_index_cache_report(repo_root)? {
+        pack_result.included.push(format!(
+            "index_cache included: scanned_files={} indexed_files={} reused_files={} changed_files={} new_files={}",
+            index_report.scanned_files,
+            index_report.indexed_files,
+            index_report.reused_files,
+            index_report.changed_files,
+            index_report.new_files
+        ));
+    }
+
+    let result = write_pack_artifact(repo_root, pack_result)?;
 
     let stats = StatsSnapshot {
         original_tokens: result.original_estimated_tokens,
@@ -263,6 +305,7 @@ pub fn run_pack(
         exit_code: None,
         fallback_used: false,
         pack_path: result.pack_path.clone(),
+        query: Some(query.to_string()),
     };
     if cfg.security.local_stats_enabled {
         let _ = write_latest_stats(&repo_root.join(".ctx/stats"), &stats);
@@ -280,6 +323,10 @@ pub fn run_pack(
     );
 
     Ok(result)
+}
+
+pub fn run_gain(repo_root: &Path, limit: usize) -> Result<GainReport> {
+    build_gain_report(&repo_root.join(".ctx/stats"), limit)
 }
 
 pub fn run_explain(repo_root: &Path, query: &str) -> Result<ExplainResult> {
@@ -319,6 +366,9 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
 
     let mut indexed = 0usize;
     let mut indexed_files = Vec::new();
+    let previous_state = load_index_cache_state(repo_root)?;
+    let mut next_state = previous_state.clone();
+    let mut report = IndexCacheReport::default();
     for root in roots {
         for entry in WalkDir::new(root)
             .into_iter()
@@ -344,24 +394,66 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
                 continue;
             }
 
+            let Ok(content) = fs::read_to_string(path) else {
+                continue;
+            };
             let rel = path
                 .strip_prefix(repo_root)
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
-            store.index_file(&rel)?;
+            let fingerprint = compute_fingerprint(&content);
+            let unchanged = previous_state
+                .files
+                .get(&rel)
+                .map(|entry| entry.fingerprint == fingerprint)
+                .unwrap_or(false);
 
-            if let Ok(content) = fs::read_to_string(path) {
-                upsert_symbols_and_snippets(&store, &rel, &content)?;
-                indexed_files.push((rel.clone(), content));
+            report.scanned_files += 1;
+            next_state.files.insert(
+                rel.clone(),
+                IndexedFileEntry {
+                    fingerprint,
+                    bytes: content.len(),
+                },
+            );
+
+            if unchanged {
+                report.reused_files += 1;
+                continue;
             }
+
+            store.index_file(&rel)?;
+            upsert_symbols_and_snippets(&store, &rel, &content)?;
+            indexed_files.push((rel.clone(), content));
             indexed += 1;
+            report.indexed_files += 1;
+            if previous_state.files.contains_key(&rel) {
+                report.changed_files += 1;
+            } else {
+                report.new_files += 1;
+            }
         }
     }
 
     for (file_path, content) in &indexed_files {
         index_symbol_edges(&store, file_path, content)?;
     }
+
+    let paths = persist_index_cache(repo_root, &next_state, &report)?;
+    let _ = append_audit_entry(
+        repo_root,
+        &format!(
+            "run_index scanned_files={} indexed_files={} reused_files={} changed_files={} new_files={} state_path={} report_path={}",
+            report.scanned_files,
+            report.indexed_files,
+            report.reused_files,
+            report.changed_files,
+            report.new_files,
+            paths.state_path,
+            paths.report_path
+        ),
+    );
 
     Ok(indexed)
 }
@@ -1200,6 +1292,17 @@ fn write_pack_artifact(repo_root: &Path, result: PackResult) -> Result<PackResul
     let json = serde_json::to_string_pretty(&with_path).context("failed to serialize pack")?;
     fs::write(&path, json).with_context(|| format!("failed to write pack {}", path.display()))?;
     Ok(with_path)
+}
+
+fn persist_index_cache(
+    repo_root: &Path,
+    state: &index_cache::IndexCacheState,
+    report: &IndexCacheReport,
+) -> Result<IndexCachePaths> {
+    let mut paths = save_index_cache_state(repo_root, state)?;
+    let report_paths = write_index_cache_report(repo_root, report)?;
+    paths.report_path = report_paths.report_path;
+    Ok(paths)
 }
 
 fn query_terms(query: &str) -> Vec<String> {

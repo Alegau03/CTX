@@ -74,9 +74,12 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
         "ctx-hook.md",
         "ctx-explain.md",
         "ctx-retrieve.md",
+        "ctx-read.md",
         "ctx-graph-query.md",
         "ctx-plan.md",
         "ctx-compare.md",
+        "ctx-gain.md",
+        "ctx-run.md",
         "ctx-prune-logs.md",
         "ctx-prune-diff.md",
         "ctx-opencode-install.md",
@@ -161,6 +164,26 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(compare_command.contains("Before vs CTX"));
     assert!(compare_command.contains("original_estimated_tokens"));
 
+    let gain_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-gain.md"))
+        .expect("ctx-gain command");
+    assert!(gain_command.contains("OpenCode-only"));
+    assert!(gain_command.contains("--json stats --history 20"));
+    assert!(gain_command.contains("sampled_runs"));
+    assert!(gain_command.contains("estimated_tokens_saved"));
+
+    let read_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
+        .expect("ctx-read command");
+    assert!(read_command.contains("OpenCode-only"));
+    assert!(read_command.contains("host-read"));
+    assert!(read_command.contains("full`, `outline`, or `digest`"));
+
+    let run_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-run.md"))
+        .expect("ctx-run command");
+    assert!(run_command.contains("OpenCode-only"));
+    assert!(run_command.contains("--json host-run \"$ARGUMENTS\""));
+    assert!(run_command.contains("CTX Run"));
+    assert!(run_command.contains("raw_log_path"));
+
     let plan_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
         .expect("ctx-plan command");
     assert!(plan_command.contains("OpenCode-only"));
@@ -200,6 +223,9 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(instructions.contains("/ctx-toolbook-import"));
     assert!(instructions.contains("/ctx-plan"));
     assert!(instructions.contains("/ctx-compare"));
+    assert!(instructions.contains("/ctx-gain"));
+    assert!(instructions.contains("/ctx-read"));
+    assert!(instructions.contains("/ctx-run"));
     assert!(instructions.contains("/ctx-learn"));
 
     let index_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-index.md"))

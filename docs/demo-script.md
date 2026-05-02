@@ -43,8 +43,11 @@ Run:
 /ctx-memory-search auth
 /ctx-plan fix auth refresh regression
 /ctx-retrieve refresh token auth failure
+/ctx-read src/auth.ts outline
 /ctx-pack fix auth refresh regression
 /ctx-compare fix auth refresh regression
+/ctx-gain
+/ctx-run npm run test:auth
 /ctx-prune-logs npm run test:auth
 /ctx-stats
 ```

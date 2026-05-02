@@ -400,6 +400,29 @@ Show the top hits in a clean, predictable format using the returned `source`, `s
 Keep any follow-up summary to one short sentence."#,
         },
         HostActionTemplate {
+            slug: "ctx-read",
+            description: "Context | Read one file with CTX cache-aware modes",
+            body: r#"OpenCode-only CTX file read with session cache / re-read compression.
+
+Arguments:
+- `$1`: required file path
+- `$2`: optional mode, one of `full`, `outline`, or `digest`
+
+Usage:
+- `/ctx-read src/auth.ts`
+- `/ctx-read src/auth.ts outline`
+- `/ctx-read docs/runbook.md digest`
+
+If `$1` is missing, stop and show the usage above.
+
+Run:
+!`mode="${2:-digest}"; {{CTX_CMD}} --json host-read "$1" --mode "$mode"`
+
+Print `output` first.
+Then print one compact metadata line with `mode`, `cache_hit`, `fingerprint`, and `path`.
+Keep any explanation to one short sentence."#,
+        },
+        HostActionTemplate {
             slug: "ctx-graph-query",
             description: "Context | Query the CTX graph for files and symbols",
             body: r#"Query the CTX graph for:
@@ -409,6 +432,27 @@ $ARGUMENTS
 !`{{CTX_CMD}} graph query "$ARGUMENTS"`
 
 Show the graph matches and explain the most relevant relationships."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-run",
+            description: "Debug | Run a shell command and return the pruned root cause",
+            body: r#"OpenCode-only CTX command runner for this repository.
+
+Arguments:
+- `$ARGUMENTS`: the exact shell command to execute
+
+`$ARGUMENTS` must be a real shell command such as `npm test -- --grep "refresh"` or `cargo test auth_refresh`.
+Do not treat `$ARGUMENTS` as a topic, label, or natural-language request.
+If `$ARGUMENTS` does not look runnable, stop and tell the user to provide the exact shell command to execute.
+
+!`{{CTX_CMD}} --json host-run "$ARGUMENTS"`
+
+Produce a compact `CTX Run` block with:
+- `summary`
+- `pruned_output`
+- one metadata line with `exit_code`, `latency_ms`, and `raw_log_path`
+
+Keep any explanation to one short sentence."#,
         },
         HostActionTemplate {
             slug: "ctx-prune-logs",
@@ -733,6 +777,24 @@ Show the stats payload first.
 Then add one short sentence summarizing the latest run."#,
         },
         HostActionTemplate {
+            slug: "ctx-gain",
+            description: "Benchmark | Show recent CTX token savings and biggest wins",
+            body: r#"OpenCode-only CTX gain report for this repository.
+
+!`{{CTX_CMD}} --json stats --history 20`
+
+Produce a compact `CTX Gain` block with:
+- `sampled_runs`
+- `estimated_tokens_saved`
+- `latest_reduction_pct`
+- `average_reduction_pct`
+- `max_reduction_pct`
+- `top_queries`
+
+If `latest_pack_path` is present, show it on one compact line.
+Keep any follow-up explanation to one short sentence."#,
+        },
+        HostActionTemplate {
             slug: "ctx-opencode-install",
             description: "Setup | Refresh CTX integration files for OpenCode",
             body: r#"Refresh the current repository's OpenCode integration.
@@ -791,8 +853,8 @@ For normal prompts, prefer CTX-first behavior:
 
 1. If repository readiness is unclear, run `/ctx-doctor`.
 2. If graph/index state is stale or missing, run `/ctx-index` or `/ctx-reindex`.
-3. For code understanding, prefer `/ctx-retrieve`, `/ctx-graph-query`, and CTX MCP tools before manually reading many files.
-4. For debugging logs, prefer `/ctx-prune-logs`.
+3. For code understanding, prefer `/ctx-retrieve`, `/ctx-read`, `/ctx-graph-query`, and CTX MCP tools before manually reading many files.
+4. For debugging logs, prefer `/ctx-run`, and use `/ctx-prune-logs` when the user already has raw output or explicitly wants pruning only.
 5. For debugging diffs, prefer `/ctx-prune-diff`.
 6. For project habits or persistent rules, bootstrap markdown habits once with `/ctx-memory-bootstrap`, then prefer `/ctx-memory-search`, `/ctx-memory-list`, `/ctx-memory-get`, and `/ctx-memory-set` instead of large markdown habit files.
 7. For context construction, prefer `/ctx-pack` or `/ctx-ask` before assembling large prompts manually.
@@ -800,9 +862,10 @@ For normal prompts, prefer CTX-first behavior:
 9. For ambiguity about likely scope or intent, use `/ctx-explain`.
 10. For implementation planning, use `/ctx-plan` to combine retrieval, graph, memory, and pack signals before editing.
 11. For quick before-vs-packed context density, use `/ctx-compare`.
-12. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
-13. For reusable lessons learned during work, use `/ctx-learn`.
-14. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
+12. For recent token savings and biggest pack wins, use `/ctx-gain`.
+13. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
+14. For reusable lessons learned during work, use `/ctx-learn`.
+15. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
 
 ## Memory And Rules
 

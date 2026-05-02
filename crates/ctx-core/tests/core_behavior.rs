@@ -1,7 +1,7 @@
 use std::fs;
 use std::process::Command;
 
-use ctx_core::{init_repo, run_graph_query, run_index, run_pack};
+use ctx_core::{init_repo, run_gain, run_graph_query, run_index, run_pack};
 use ctx_graph::GraphStore;
 use tempfile::tempdir;
 
@@ -320,4 +320,46 @@ pub fn validate_refresh_token(token: &str) -> bool {
     assert!(packed.compact_context.contains("validate_refresh_token"));
     assert!(packed.compact_context.contains("decode_token"));
     assert!(packed.compact_context.contains("src/tokens.rs"));
+}
+
+#[test]
+fn run_gain_reports_recent_pack_savings() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    let attach = tmp.path().join("failure.txt");
+    fs::write(&attach, "ERROR token decode failed\nTraceback line 2").expect("write");
+
+    run_pack(tmp.path(), "fix auth", Some(100), Some(&attach)).expect("first pack");
+    run_pack(tmp.path(), "plan login", Some(120), Some(&attach)).expect("second pack");
+
+    let report = run_gain(tmp.path(), 20).expect("gain report");
+    assert_eq!(report.sampled_runs, 2);
+    assert!(report.latest_reduction_pct.is_some());
+    assert_eq!(report.top_queries.len(), 2);
+}
+
+#[test]
+fn run_pack_includes_latest_index_cache_summary() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    let path = tmp.path().join("src/auth.rs");
+    fs::write(&path, "fn validate_refresh_token() -> bool { true }\n").expect("write");
+
+    run_index(tmp.path(), &[]).expect("first index");
+    run_index(tmp.path(), &[]).expect("second index");
+
+    let packed = run_pack(tmp.path(), "fix auth", Some(120), None).expect("pack");
+    assert!(
+        packed
+            .included
+            .iter()
+            .any(|entry| entry.contains("index_cache included"))
+    );
+    assert!(
+        packed
+            .included
+            .iter()
+            .any(|entry| entry.contains("reused_files=1"))
+    );
 }

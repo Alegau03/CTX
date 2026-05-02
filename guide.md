@@ -546,10 +546,15 @@ These are the commands most teams will use every day:
 | `/ctx-memory-search <query>` | `ctx memory search <query>` | Finds relevant project directives |
 | `/ctx-plan <task>` | OpenCode-only | Builds a graph-backed low-token implementation plan |
 | `/ctx-retrieve <query>` | `ctx retrieve <query>` | Retrieves relevant code, symbols, snippets, and memory |
+| `/ctx-read <file> [mode]` | OpenCode-only | Reads one file with `full`, `outline`, or `digest` mode and session re-read compression |
 | `/ctx-pack <task>` | `ctx pack <task>` | Builds a compact task-specific context pack |
 | `/ctx-compare <task>` | OpenCode-only | Shows before-vs-CTX context density for one task |
+| `/ctx-gain` | `ctx stats --history 20` | Shows recent token savings, biggest wins, and repeated high-gain queries |
+| `/ctx-run <shell command>` | OpenCode-only | Runs a repo command, prunes the noisy output, and points to the raw log |
 | `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs to the root cause |
 | `/ctx-stats` | `ctx stats` | Shows latest local usage and token-efficiency stats |
+
+Repeated `ctx index` and `ctx reindex` runs are delta-aware: unchanged files are reused from the local cache, and the latest summary is written under `.ctx/cache/index-report.json`. Recent pack artifacts also carry that cache summary in their included metadata.
 
 For large CLI manuals or cheat sheets, use the OpenCode-only Toolbooks commands in [docs/commands.md](docs/commands.md) instead of putting the whole manual in `AGENTS.md`.
 

@@ -17,6 +17,7 @@ fn exposes_required_pdf_tools() {
     let tools = default_tools();
     for required in [
         "get_relevant_context",
+        "read_path",
         "project_map",
         "search_symbols",
         "related_failures",
@@ -236,6 +237,54 @@ fn tools_call_get_relevant_context_returns_pack_data() {
             .as_str()
             .unwrap_or_default()
             .contains("query:")
+    );
+}
+
+#[test]
+fn tools_call_read_path_returns_cached_read_shape() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    std::fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    std::fs::write(
+        tmp.path().join("src/auth.ts"),
+        "export function rotateRefreshToken(token: string) {\n  return token.trim();\n}\n",
+    )
+    .expect("write file");
+
+    let response = roundtrip_once(
+        tmp.path(),
+        json!({
+            "jsonrpc":"2.0",
+            "id":30,
+            "method":"tools/call",
+            "params":{
+                "name":"read_path",
+                "arguments":{
+                    "path":"src/auth.ts",
+                    "mode":"outline"
+                }
+            }
+        }),
+    );
+
+    assert!(response["result"]["content"].is_array());
+    assert_eq!(
+        response["result"]["structuredContent"]["mode"]
+            .as_str()
+            .unwrap_or_default(),
+        "outline"
+    );
+    assert_eq!(
+        response["result"]["structuredContent"]["path"]
+            .as_str()
+            .unwrap_or_default(),
+        "src/auth.ts"
+    );
+    assert!(
+        response["result"]["structuredContent"]["output"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("rotateRefreshToken")
     );
 }
 

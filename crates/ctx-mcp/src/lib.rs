@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use ctx_core::{
-    run_graph_query, run_memory_bootstrap_markdown, run_memory_delete, run_memory_get,
+    ReadMode, run_graph_query, run_memory_bootstrap_markdown, run_memory_delete, run_memory_get,
     run_memory_import_markdown, run_memory_list, run_memory_search, run_memory_set, run_pack,
-    run_prune_diff,
+    run_prune_diff, run_read,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -75,6 +75,11 @@ pub fn default_tools() -> Vec<McpTool> {
                 ],
                 &["query"],
             ),
+        },
+        McpTool {
+            name: "read_path",
+            description: "Read one repository file using full, outline, or digest mode with reread cache awareness",
+            input_schema: json_schema(&[("path", "string"), ("mode", "string")], &["path"]),
         },
         McpTool {
             name: "project_map",
@@ -456,6 +461,19 @@ fn tools_call(cfg: &McpServerConfig, params: Option<&Value>) -> Result<Value> {
 
             let pack = run_pack(&cfg.repo_root, query, budget, attach.as_deref())?;
             serde_json::to_value(pack).context("failed to serialize pack result")
+        }
+        "read_path" => {
+            let path = args
+                .get("path")
+                .and_then(Value::as_str)
+                .context("read_path requires arguments.path")?;
+            let mode = args
+                .get("mode")
+                .and_then(Value::as_str)
+                .unwrap_or("digest")
+                .parse::<ReadMode>()?;
+            let report = run_read(&cfg.repo_root, path, mode)?;
+            serde_json::to_value(report).context("failed to serialize read report")
         }
         "project_map" => {
             let depth = args.get("depth").and_then(Value::as_u64).unwrap_or(2) as usize;

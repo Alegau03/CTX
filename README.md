@@ -97,7 +97,7 @@ Inside OpenCode, start with:
 /ctx
 ```
 
-Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-compare`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
+Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-read <file> [mode]`, `/ctx-pack`, `/ctx-compare`, `/ctx-gain`, `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
 
 For full usage, examples, and expected output, see [guide.md](guide.md).
 
@@ -146,8 +146,12 @@ External validation completed:
 | Command menu | `/ctx` opens a categorized CTX command center inside OpenCode |
 | Graph memory | Bootstrap/import/search/list/get/set/delete/export project directives, including compatibility seeds from `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions |
 | Planning | `/ctx-plan <task>` combines graph, memory, retrieval, and token-reduced pack signals into an implementation plan |
+| Read cache | `/ctx-read <file> [mode]` supports `full`, `outline`, and `digest` reads with session re-read compression for unchanged files |
+| Delta-aware indexing | Repeated `ctx index` runs reuse unchanged files, write local cache reports, and avoid reprocessing identical content |
 | Context packing | Builds compact task packs with graph, memory, diff, failure, and attachment signals |
 | Context comparison | `/ctx-compare <task>` shows before-vs-CTX token density for one task pack |
+| Gain reporting | `/ctx-gain` shows recent token savings, biggest wins, and top repeated queries from local stats history |
+| Command compression | `/ctx-run <shell command>` runs a local repo command, prunes the noisy output, and keeps the root cause plus raw-log path |
 | Toolbooks | OpenCode-only `/ctx-toolbook-*` commands store and search large CLI manuals without putting them in `AGENTS.md` |
 | Learning | `/ctx-learn <key> "<body>"` stores reusable project lessons in graph memory |
 | Retrieval | Hybrid graph, FTS, snippets, symbols, and semantic ranking with local fallback |

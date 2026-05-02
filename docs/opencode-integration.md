@@ -47,10 +47,10 @@ Inside OpenCode:
 The OpenCode integration covers:
 
 - setup: `/ctx`, `/ctx-help`, `/ctx-doctor`, `/ctx-init`, `/ctx-index`, `/ctx-reindex`
-- context: `/ctx-pack`, `/ctx-ask`, `/ctx-hook`, `/ctx-explain`, `/ctx-retrieve`, `/ctx-graph-query`
-- pruning: `/ctx-prune-logs <shell command>`, `/ctx-prune-diff`
+- context: `/ctx-pack`, `/ctx-ask`, `/ctx-hook`, `/ctx-explain`, `/ctx-retrieve`, `/ctx-read`, `/ctx-graph-query`
+- pruning: `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, `/ctx-prune-diff`
 - memory: `/ctx-memory-bootstrap`, `/ctx-memory-import`, `/ctx-memory-search`, `/ctx-memory-list`, `/ctx-memory-get`, `/ctx-memory-set`, `/ctx-memory-delete`, `/ctx-memory-export`
-- benchmarks: `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
+- benchmarks: `/ctx-gain`, `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
 - MCP/bootstrap: `/ctx-mcp-stdio`, `/ctx-mcp-serve`, `/ctx-mcp-config-opencode`, `/ctx-opencode-install`
 
 ## Design Constraints

@@ -231,6 +231,36 @@ fn stats_shows_latest_snapshot_after_pack() {
 }
 
 #[test]
+fn stats_history_reports_gain_summary_after_multiple_packs() {
+    let tmp = tempdir().expect("tempdir");
+    fs::write(tmp.path().join("fail.txt"), "Traceback: boom").expect("write");
+
+    for query in ["fix auth", "plan login"] {
+        Command::cargo_bin("ctx")
+            .expect("bin")
+            .args([
+                "pack",
+                query,
+                "--attach",
+                tmp.path().join("fail.txt").to_string_lossy().as_ref(),
+            ])
+            .current_dir(tmp.path())
+            .assert()
+            .success();
+    }
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "stats", "--history", "20"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"sampled_runs\""))
+        .stdout(predicate::str::contains("\"estimated_tokens_saved\""))
+        .stdout(predicate::str::contains("\"top_queries\""));
+}
+
+#[test]
 fn mcp_serve_once_handles_rpc_tools_list() {
     let tmp = tempdir().expect("tempdir");
 
@@ -424,7 +454,7 @@ fn opencode_install_creates_project_config_and_command_files() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["commands_written"], 38);
+    assert_eq!(report["commands_written"], 41);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -473,9 +503,12 @@ fn opencode_install_creates_project_config_and_command_files() {
         "ctx-hook.md",
         "ctx-explain.md",
         "ctx-retrieve.md",
+        "ctx-read.md",
         "ctx-graph-query.md",
         "ctx-plan.md",
         "ctx-compare.md",
+        "ctx-gain.md",
+        "ctx-run.md",
         "ctx-prune-logs.md",
         "ctx-prune-diff.md",
         "ctx-opencode-install.md",
@@ -544,6 +577,25 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(compare_command.contains("pack \"$ARGUMENTS\" --json"));
     assert!(compare_command.contains("original_estimated_tokens"));
     assert!(compare_command.contains("reduction_pct"));
+
+    let gain_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-gain.md"))
+        .expect("read gain command");
+    assert!(gain_command.contains("--json stats --history 20"));
+    assert!(gain_command.contains("sampled_runs"));
+    assert!(gain_command.contains("estimated_tokens_saved"));
+
+    let read_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
+        .expect("read read command");
+    assert!(read_command.contains("OpenCode-only"));
+    assert!(read_command.contains("host-read"));
+    assert!(read_command.contains("full`, `outline`, or `digest`"));
+
+    let run_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-run.md"))
+        .expect("read run command");
+    assert!(run_command.contains("OpenCode-only"));
+    assert!(run_command.contains("--json host-run \"$ARGUMENTS\""));
+    assert!(run_command.contains("summary"));
+    assert!(run_command.contains("raw_log_path"));
 
     let plan_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
         .expect("read plan command");
@@ -714,6 +766,9 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(opencode_smoke.contains(".opencode/commands/ctx-pack.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-plan.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-compare.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-gain.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-read.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-run.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-toolbook-import.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-learn.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-memory-bootstrap.md"));
@@ -735,6 +790,12 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("scripts/release/opencode-smoke.sh"));
     assert!(install_docs.contains("scripts/release/verify-artifact.sh"));
     assert!(install_docs.contains("release-manifest.json"));
+    assert!(readme.contains("/ctx-gain"));
+    assert!(readme.contains("/ctx-read"));
+    assert!(readme.contains("/ctx-run"));
+    assert!(guide.contains("/ctx-gain"));
+    assert!(guide.contains("/ctx-read"));
+    assert!(guide.contains("/ctx-run"));
     assert!(readme.contains("guide.md"));
     assert!(readme.contains("Toolbooks"));
     assert!(readme.contains("/ctx-plan"));

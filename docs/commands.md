@@ -18,7 +18,10 @@ Some workflows exist only as OpenCode slash commands. They intentionally do not 
 OpenCode-only commands in this document:
 
 - `/ctx-compare <task>`
+- `/ctx-gain`
 - `/ctx-plan <task>`
+- `/ctx-read <file> [mode]`
+- `/ctx-run <shell command>`
 - `/ctx-toolbook-import <name> <file>`
 - `/ctx-toolbook-search <name> "<query>"`
 - `/ctx-toolbook-list <name>`
@@ -55,6 +58,7 @@ ctx init
 
 - OpenCode: `/ctx-index`
 - What it does: indexes files, symbols, snippets, and graph links for retrieval.
+- Delta-aware behavior: unchanged files are reused from the local cache, and the latest summary is written to `.ctx/cache/index-report.json`.
 
 ```bash
 ctx index
@@ -65,6 +69,7 @@ ctx index src tests
 
 - OpenCode: `/ctx-reindex`
 - What it does: refreshes indexing for selected paths without rebuilding everything from scratch.
+- Delta-aware behavior: when selected files are unchanged, CTX can skip reprocessing them and record the reuse in `.ctx/cache/index-report.json`.
 
 ```bash
 ctx reindex src tests
@@ -121,6 +126,7 @@ ctx retrieve "refresh token auth failure" --limit 8
 
 - OpenCode: `/ctx-pack <task>`
 - What it does: builds a compact task-specific context pack and stores an artifact under `.ctx/packs/`.
+- Cache explainability: when available, pack metadata includes the latest local index-cache summary so reuse of unchanged indexed files is visible.
 
 ```bash
 ctx pack "fix refresh token rotation" --json
@@ -144,6 +150,40 @@ ctx pack "fix failing auth test" --attach /tmp/fail.log --json
 
 ```text
 /ctx-plan add a registration with email button in the login menu
+```
+
+### `/ctx-gain` OpenCode-only
+
+- CLI equivalent: none; it uses `ctx --json stats --history 20` internally from OpenCode.
+- What it does: shows recent token savings, biggest wins, and top repeated queries from local stats history.
+
+```text
+/ctx-gain
+```
+
+### `/ctx-read <file> [mode]` OpenCode-only
+
+- CLI equivalent: none; it uses the hidden helper `ctx --json host-read <file> --mode <mode>` internally from OpenCode.
+- What it does: reads one repository file with `full`, `outline`, or `digest` mode and uses a local session read cache to compress unchanged rereads.
+- Modes:
+  - `full`: full file body for explicit deep inspection
+  - `outline`: symbols, headings, signatures, and structure-first view
+  - `digest`: compact fingerprint-oriented reread response for unchanged files
+
+```text
+/ctx-read src/auth.ts
+/ctx-read src/auth.ts outline
+/ctx-read docs/runbook.md digest
+```
+
+### `/ctx-run <shell command>` OpenCode-only
+
+- CLI equivalent: none; it uses the hidden helper `ctx --json host-run "<shell command>"` internally from OpenCode.
+- What it does: runs one repository-scoped shell command, captures combined output, prunes the noise, and keeps the root cause plus the raw-log path.
+- Use it when: you want the normal OpenCode debugging flow in one step instead of piping logs manually.
+
+```text
+/ctx-run npm run test:auth
 ```
 
 ### `ctx ask <query>`
@@ -173,13 +213,14 @@ ctx hook "fix flaky auth test"
 ctx explain "fix failing pytest in auth"
 ```
 
-### `ctx stats`
+### `ctx stats [--history <n>]`
 
 - OpenCode: `/ctx-stats`
-- What it does: prints the latest local telemetry snapshot, including token reduction and runtime metadata.
+- What it does: prints the latest local telemetry snapshot, or an aggregate gain-style report when `--history` is greater than `1`.
 
 ```bash
 ctx stats
+ctx stats --history 20
 ```
 
 ## Memory Commands
@@ -345,6 +386,7 @@ ctx graph query auth
 
 - OpenCode: `/ctx-prune-logs <shell command>`
 - What it does: removes repeated or low-signal log lines and keeps the failure root cause readable.
+- Prefer `/ctx-run <shell command>` for the normal OpenCode workflow. Use `/ctx-prune-logs` when you already have raw output or want pruning only.
 
 ```bash
 pytest -q 2>&1 | ctx prune logs --max-lines 50

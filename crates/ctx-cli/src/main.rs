@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use ctx_core::{
-    init_repo, load_or_default_config, run_explain, run_graph_query, run_index,
-    run_memory_ab_benchmark, run_memory_ab_benchmark_suite, run_memory_bootstrap_markdown,
-    run_memory_delete, run_memory_export_markdown, run_memory_get, run_memory_import_markdown,
-    run_memory_list, run_memory_search, run_memory_set, run_pack, run_prune_diff, run_prune_logs,
-    run_retrieve,
+    ReadMode, init_repo, load_or_default_config, run_command, run_explain, run_gain,
+    run_graph_query, run_index, run_memory_ab_benchmark, run_memory_ab_benchmark_suite,
+    run_memory_bootstrap_markdown, run_memory_delete, run_memory_export_markdown, run_memory_get,
+    run_memory_import_markdown, run_memory_list, run_memory_search, run_memory_set, run_pack,
+    run_prune_diff, run_prune_logs, run_read, run_retrieve,
 };
 use ctx_graph::GraphStore;
 use ctx_hooks::apply_pre_prompt_hook;
@@ -90,10 +90,14 @@ enum Commands {
         #[command(subcommand)]
         command: BenchmarkCommands,
     },
-    Stats,
+    Stats(StatsArgs),
     Doctor,
     Menu,
     Help,
+    #[command(hide = true)]
+    HostRun(HostRunArgs),
+    #[command(hide = true)]
+    HostRead(HostReadArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -249,6 +253,24 @@ struct MemoryExportArgs {
     limit: usize,
     #[arg(long)]
     title: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct StatsArgs {
+    #[arg(long, default_value_t = 1)]
+    history: usize,
+}
+
+#[derive(Debug, Args)]
+struct HostRunArgs {
+    command: String,
+}
+
+#[derive(Debug, Args)]
+struct HostReadArgs {
+    path: String,
+    #[arg(long, default_value = "digest")]
+    mode: String,
 }
 
 fn main() {
@@ -610,14 +632,43 @@ fn run() -> Result<()> {
                 }
             }
         },
-        Commands::Stats => {
-            let stats_path = repo_root.join(".ctx/stats/latest.json");
-            if !stats_path.exists() {
-                println!("no stats recorded yet");
+        Commands::Stats(args) => {
+            if args.history > 1 {
+                let report = run_gain(&repo_root, args.history)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else if report.sampled_runs == 0 {
+                    println!("no stats recorded yet");
+                } else {
+                    println!("sampled_runs: {}", report.sampled_runs);
+                    println!("estimated_tokens_saved: {}", report.estimated_tokens_saved);
+                    if let Some(latest) = report.latest_reduction_pct {
+                        println!("latest_reduction_pct: {:.2}", latest);
+                    }
+                    println!("average_reduction_pct: {:.2}", report.average_reduction_pct);
+                    println!("max_reduction_pct: {:.2}", report.max_reduction_pct);
+                    if let Some(pack_path) = report.latest_pack_path.as_deref() {
+                        println!("latest_pack_path: {pack_path}");
+                    }
+                    for item in report.top_queries {
+                        println!(
+                            "top_query: {} runs={} avg_reduction_pct={:.2} estimated_tokens_saved={}",
+                            item.query,
+                            item.runs,
+                            item.average_reduction_pct,
+                            item.estimated_tokens_saved
+                        );
+                    }
+                }
             } else {
-                let body = std::fs::read_to_string(&stats_path)
-                    .with_context(|| format!("failed to read {}", stats_path.display()))?;
-                println!("{body}");
+                let stats_path = repo_root.join(".ctx/stats/latest.json");
+                if !stats_path.exists() {
+                    println!("no stats recorded yet");
+                } else {
+                    let body = std::fs::read_to_string(&stats_path)
+                        .with_context(|| format!("failed to read {}", stats_path.display()))?;
+                    println!("{body}");
+                }
             }
         }
         Commands::Doctor => {
@@ -628,6 +679,31 @@ fn run() -> Result<()> {
         }
         Commands::Help => {
             println!("{}", command_guide());
+        }
+        Commands::HostRun(args) => {
+            let report = run_command(&repo_root, &args.command)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", report.pruned_output);
+                println!(
+                    "exit_code={} latency_ms={} raw_log_path={}",
+                    report.exit_code, report.latency_ms, report.raw_log_path
+                );
+            }
+        }
+        Commands::HostRead(args) => {
+            let mode = args.mode.parse::<ReadMode>()?;
+            let report = run_read(&repo_root, &args.path, mode)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!("{}", report.output);
+                println!(
+                    "mode={} cache_hit={} fingerprint={} path={}",
+                    report.mode, report.cache_hit, report.fingerprint, report.path
+                );
+            }
         }
     }
 
@@ -772,7 +848,7 @@ fn render_command_center(repo_root: &Path) -> String {
     };
 
     format!(
-        "CTX Command Center\n\nrepo: {} | status: {}\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-index` - build or refresh the graph\n- `/ctx-memory-bootstrap` - import AGENTS-style project rules\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nSetup\n- `/ctx-init`\n- `/ctx-index`\n- `/ctx-reindex`\n- `/ctx-opencode-install`\n\nPlanning\n- `/ctx-plan <task>`\n\nContext\n- `/ctx-pack <task>`\n- `/ctx-compare <task>`\n- `/ctx-ask <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-graph-query <query>`\n- `/ctx-explain <task>`\n\nMemory\n- `/ctx-memory-bootstrap`\n- `/ctx-memory-search <topic>`\n- `/ctx-memory-list`\n- `/ctx-memory-get <key>`\n- `/ctx-memory-set <key> <body>`\n- `/ctx-memory-export <file>`\n\nToolbooks\n- `/ctx-toolbook-import <name> <file>`\n- `/ctx-toolbook-search <name> \"<query>\"`\n- `/ctx-toolbook-list <name>`\n- `/ctx-toolbook-pack <name> \"<task>\"`\n\nLearning\n- `/ctx-learn <key> \"<body>\"`\n\nDebug\n- `/ctx-prune-logs <shell command>`\n- `/ctx-prune-diff <topic>`\n- `/ctx-hook <task>`\n\nBenchmark\n- `/ctx-benchmark-memory-ab ...`\n- `/ctx-benchmark-memory-suite ...`\n- `/ctx-stats`\n\nMCP\n- `/ctx-mcp-stdio`\n- `/ctx-mcp-serve`\n- `/ctx-mcp-config-opencode`\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
+        "CTX Command Center\n\nrepo: {} | status: {}\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-index` - build or refresh the graph\n- `/ctx-memory-bootstrap` - import AGENTS-style project rules\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nSetup\n- `/ctx-init`\n- `/ctx-index`\n- `/ctx-reindex`\n- `/ctx-opencode-install`\n\nPlanning\n- `/ctx-plan <task>`\n\nContext\n- `/ctx-pack <task>`\n- `/ctx-compare <task>`\n- `/ctx-ask <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-read <file> [mode]`\n- `/ctx-graph-query <query>`\n- `/ctx-explain <task>`\n\nMemory\n- `/ctx-memory-bootstrap`\n- `/ctx-memory-search <topic>`\n- `/ctx-memory-list`\n- `/ctx-memory-get <key>`\n- `/ctx-memory-set <key> <body>`\n- `/ctx-memory-export <file>`\n\nToolbooks\n- `/ctx-toolbook-import <name> <file>`\n- `/ctx-toolbook-search <name> \"<query>\"`\n- `/ctx-toolbook-list <name>`\n- `/ctx-toolbook-pack <name> \"<task>\"`\n\nLearning\n- `/ctx-learn <key> \"<body>\"`\n\nDebug\n- `/ctx-run <shell command>`\n- `/ctx-prune-logs <shell command>`\n- `/ctx-prune-diff <topic>`\n- `/ctx-hook <task>`\n\nBenchmark\n- `/ctx-gain`\n- `/ctx-benchmark-memory-ab ...`\n- `/ctx-benchmark-memory-suite ...`\n- `/ctx-stats`\n\nMCP\n- `/ctx-mcp-stdio`\n- `/ctx-mcp-serve`\n- `/ctx-mcp-config-opencode`\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
         repo_root
             .file_name()
             .and_then(|name| name.to_str())
@@ -935,9 +1011,10 @@ Example: ctx benchmark memory-ab "run tests and fix root cause" --markdown AGENT
 What it does: Runs a reusable benchmark suite from a spec file and writes publishable markdown/JSON reports.
 Example: ctx benchmark memory-suite --spec benchmarks/memory-ab.example.toml --report-out benchmarks/report.md --json-out benchmarks/report.json
 
-28) ctx stats
-What it does: Prints latest local telemetry snapshot, including token reduction and runtime metadata.
+28) ctx stats [--history n]
+What it does: Prints latest local telemetry snapshot, or an aggregate gain report when `--history` is greater than 1.
 Example: ctx stats
+Example: ctx stats --history 20
 
 29) ctx doctor
 What it does: Checks first-run/install readiness: config, graph, local stats, audit log, and privacy defaults.

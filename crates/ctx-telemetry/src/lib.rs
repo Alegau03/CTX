@@ -1,4 +1,5 @@
 pub mod audit;
+pub mod gain;
 pub mod stats;
 
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,8 @@ pub use audit::{
     AuditEvent, PrivacyAuditEvent, append_audit_event, append_audit_line,
     append_privacy_audit_event,
 };
-pub use stats::{StatsSnapshot, read_latest_stats, write_latest_stats};
+pub use gain::{GainQuerySummary, GainReport, build_gain_report};
+pub use stats::{StatsSnapshot, read_latest_stats, read_stats_history, write_latest_stats};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkCaseResult {
