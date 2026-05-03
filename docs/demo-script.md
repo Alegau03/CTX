@@ -32,6 +32,12 @@ ctx opencode install
 opencode
 ```
 
+Optional lean install for a shorter demo surface:
+
+```bash
+ctx opencode install --profile core
+```
+
 ### 3. Start Inside OpenCode
 
 Run:
@@ -46,6 +52,7 @@ Run:
 /ctx-read src/auth.ts outline
 /ctx-pack fix auth refresh regression
 /ctx-compare fix auth refresh regression
+/ctx-dashboard
 /ctx-gain
 /ctx-run npm run test:auth
 /ctx-prune-logs npm run test:auth

@@ -62,6 +62,11 @@ pub struct ReadCacheReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ReadCacheState {
+    #[serde(default)]
+    cache_hits: usize,
+    #[serde(default)]
+    cache_misses: usize,
+    #[serde(default)]
     files: BTreeMap<String, CachedFileEntry>,
 }
 
@@ -106,6 +111,11 @@ pub fn run_cached_read(
         .get(&display_path)
         .map(|entry| entry.fingerprint == fingerprint)
         .unwrap_or(false);
+    if cache_hit {
+        state.cache_hits += 1;
+    } else {
+        state.cache_misses += 1;
+    }
 
     let entry = CachedFileEntry {
         fingerprint: fingerprint.clone(),

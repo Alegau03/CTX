@@ -18,6 +18,7 @@ Some workflows exist only as OpenCode slash commands. They intentionally do not 
 OpenCode-only commands in this document:
 
 - `/ctx-compare <task>`
+- `/ctx-dashboard`
 - `/ctx-gain`
 - `/ctx-plan <task>`
 - `/ctx-read <file> [mode]`
@@ -88,9 +89,13 @@ ctx doctor
 
 - OpenCode: `/ctx-opencode-install`
 - What it does: writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md`.
+- Profiles:
+  - `full` (default): full OpenCode CTX surface
+  - `core`: lean daily workflow with only `/ctx`, `/ctx-doctor`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-run`, `/ctx-prune-logs`, `/ctx-stats`, and `/ctx-gain`
 
 ```bash
 ctx opencode install
+ctx opencode install --profile core
 ```
 
 ### `ctx menu`
@@ -147,6 +152,7 @@ ctx pack "fix failing auth test" --attach /tmp/fail.log --json
 - CLI equivalent: none; it combines existing CTX primitives from inside OpenCode.
 - What it does: builds a graph-backed implementation plan using retrieval, graph query, memory search, and a compact context pack.
 - Output includes: task summary, intent, relevant context, token efficiency, implementation steps, suggested tests, and the first action.
+- Output format: stable markdown sections beginning with `## 🧭 CTX Plan`.
 
 ```text
 /ctx-plan add a registration with email button in the login menu
@@ -156,15 +162,27 @@ ctx pack "fix failing auth test" --attach /tmp/fail.log --json
 
 - CLI equivalent: none; it uses `ctx --json stats --history 20` internally from OpenCode.
 - What it does: shows recent token savings, biggest wins, and top repeated queries from local stats history.
+- Output format: stable markdown sections beginning with `## 💸 CTX Gain`.
 
 ```text
 /ctx-gain
+```
+
+### `/ctx-dashboard` OpenCode-only
+
+- CLI equivalent: none; it uses the hidden helper `ctx --json host-dashboard` internally from OpenCode.
+- What it does: shows a local dashboard snapshot for savings, cache ratios, latest activity, top wins, warnings, and recent audit activity.
+- Output format: stable markdown sections beginning with `## 📊 CTX Dashboard`.
+
+```text
+/ctx-dashboard
 ```
 
 ### `/ctx-read <file> [mode]` OpenCode-only
 
 - CLI equivalent: none; it uses the hidden helper `ctx --json host-read <file> --mode <mode>` internally from OpenCode.
 - What it does: reads one repository file with `full`, `outline`, or `digest` mode and uses a local session read cache to compress unchanged rereads.
+- Output format: stable markdown sections beginning with `## 📖 CTX Read`.
 - Modes:
   - `full`: full file body for explicit deep inspection
   - `outline`: symbols, headings, signatures, and structure-first view
@@ -181,6 +199,7 @@ ctx pack "fix failing auth test" --attach /tmp/fail.log --json
 - CLI equivalent: none; it uses the hidden helper `ctx --json host-run "<shell command>"` internally from OpenCode.
 - What it does: runs one repository-scoped shell command, captures combined output, prunes the noise, and keeps the root cause plus the raw-log path.
 - Use it when: you want the normal OpenCode debugging flow in one step instead of piping logs manually.
+- Output format: stable markdown sections beginning with `## 🧪 CTX Run`.
 
 ```text
 /ctx-run npm run test:auth

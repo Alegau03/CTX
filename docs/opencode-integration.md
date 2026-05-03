@@ -19,6 +19,12 @@ The generated config registers CTX as a local MCP server launched with:
 ```
 
 The generated commands expose the current CTX feature surface as `/ctx-*` commands inside OpenCode.
+The installer supports two profiles:
+
+- `full` (default): complete CTX command surface
+- `core`: lean daily workflow with only the smallest OpenCode slash-command set
+
+The generated `/ctx` command center and `ctx-host-first.md` instructions reflect the installed profile.
 The bootstrap and graph-memory flow still support compatibility seed files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
 The generated command files prefer deterministic CTX-owned execution: they call the absolute `ctx` binary with `--repo-root`, lean on `--json` where it reduces host chatter, and ask OpenCode only for a narrow result-first explanation of the command output.
 
@@ -30,6 +36,13 @@ Users should open `opencode` after bootstrap and keep normal work inside the Ope
 ctx init
 ctx index
 ctx opencode install
+opencode
+```
+
+Lean alternative:
+
+```bash
+ctx opencode install --profile core
 opencode
 ```
 
@@ -50,8 +63,22 @@ The OpenCode integration covers:
 - context: `/ctx-pack`, `/ctx-ask`, `/ctx-hook`, `/ctx-explain`, `/ctx-retrieve`, `/ctx-read`, `/ctx-graph-query`
 - pruning: `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, `/ctx-prune-diff`
 - memory: `/ctx-memory-bootstrap`, `/ctx-memory-import`, `/ctx-memory-search`, `/ctx-memory-list`, `/ctx-memory-get`, `/ctx-memory-set`, `/ctx-memory-delete`, `/ctx-memory-export`
-- benchmarks: `/ctx-gain`, `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
+- benchmarks: `/ctx-dashboard`, `/ctx-gain`, `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
+
+`/ctx-dashboard` is meant to be the quick local control panel: it now highlights savings, cache ratios, latest activity, top wins, warnings, and recent audit lines in one result-first snapshot.
 - MCP/bootstrap: `/ctx-mcp-stdio`, `/ctx-mcp-serve`, `/ctx-mcp-config-opencode`, `/ctx-opencode-install`
+
+The core profile keeps only:
+
+- `/ctx`
+- `/ctx-doctor`
+- `/ctx-plan <task>`
+- `/ctx-retrieve <query>`
+- `/ctx-pack <task>`
+- `/ctx-run <shell command>`
+- `/ctx-prune-logs <shell command>`
+- `/ctx-stats`
+- `/ctx-gain`
 
 ## Design Constraints
 

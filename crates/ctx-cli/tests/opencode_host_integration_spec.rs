@@ -78,6 +78,7 @@ fn opencode_native_commands_cover_ctx_surface_area_without_wrappers() {
         "ctx-graph-query.md",
         "ctx-plan.md",
         "ctx-compare.md",
+        "ctx-dashboard.md",
         "ctx-gain.md",
         "ctx-run.md",
         "ctx-prune-logs.md",
@@ -140,6 +141,8 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(retrieve_command.contains("retrieve \"$ARGUMENTS\" --limit 8 --json"));
     assert!(retrieve_command.contains("Start with the useful result immediately"));
     assert!(retrieve_command.contains("Keep any follow-up summary to one short sentence"));
+    assert!(retrieve_command.contains("## 🔎 CTX Retrieve"));
+    assert!(retrieve_command.contains("**Top Hits**"));
 
     let hook_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-hook.md"))
         .expect("ctx-hook command");
@@ -170,12 +173,29 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(gain_command.contains("--json stats --history 20"));
     assert!(gain_command.contains("sampled_runs"));
     assert!(gain_command.contains("estimated_tokens_saved"));
+    assert!(gain_command.contains("## 💸 CTX Gain"));
+    assert!(gain_command.contains("**Savings**"));
+    assert!(gain_command.contains("**Top Queries**"));
+
+    let dashboard_command =
+        fs::read_to_string(tmp.path().join(".opencode/commands/ctx-dashboard.md"))
+            .expect("ctx-dashboard command");
+    assert!(dashboard_command.contains("OpenCode-only"));
+    assert!(dashboard_command.contains("--json host-dashboard"));
+    assert!(dashboard_command.contains("CTX Dashboard"));
+    assert!(dashboard_command.contains("## 📊 CTX Dashboard"));
+    assert!(dashboard_command.contains("**Latest Activity**"));
+    assert!(dashboard_command.contains("**Top Wins**"));
+    assert!(dashboard_command.contains("**Recent Audit**"));
 
     let read_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
         .expect("ctx-read command");
     assert!(read_command.contains("OpenCode-only"));
     assert!(read_command.contains("host-read"));
     assert!(read_command.contains("full`, `outline`, or `digest`"));
+    assert!(read_command.contains("## 📖 CTX Read"));
+    assert!(read_command.contains("**Content**"));
+    assert!(read_command.contains("**Metadata**"));
 
     let run_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-run.md"))
         .expect("ctx-run command");
@@ -183,6 +203,9 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(run_command.contains("--json host-run \"$ARGUMENTS\""));
     assert!(run_command.contains("CTX Run"));
     assert!(run_command.contains("raw_log_path"));
+    assert!(run_command.contains("## 🧪 CTX Run"));
+    assert!(run_command.contains("**Summary**"));
+    assert!(run_command.contains("**Log**"));
 
     let plan_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
         .expect("ctx-plan command");
@@ -192,6 +215,9 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(plan_command.contains("graph query \"$ARGUMENTS\""));
     assert!(plan_command.contains("pack \"$ARGUMENTS\" --json"));
     assert!(plan_command.contains("Suggested First Action"));
+    assert!(plan_command.contains("## 🧭 CTX Plan"));
+    assert!(plan_command.contains("**Relevant Context**"));
+    assert!(plan_command.contains("**Suggested Tests**"));
 
     let toolbook_pack =
         fs::read_to_string(tmp.path().join(".opencode/commands/ctx-toolbook-pack.md"))
@@ -223,6 +249,7 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(instructions.contains("/ctx-toolbook-import"));
     assert!(instructions.contains("/ctx-plan"));
     assert!(instructions.contains("/ctx-compare"));
+    assert!(instructions.contains("/ctx-dashboard"));
     assert!(instructions.contains("/ctx-gain"));
     assert!(instructions.contains("/ctx-read"));
     assert!(instructions.contains("/ctx-run"));
@@ -234,4 +261,53 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(index_command.contains("--repo-root"));
     assert!(index_command.contains("do not glob files"));
     assert!(index_command.contains("indexed_files:"));
+}
+
+#[test]
+fn opencode_core_profile_keeps_only_the_lean_command_set() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["opencode", "install", "--profile", "core"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let commands_dir = tmp.path().join(".opencode/commands");
+    for command in [
+        "ctx.md",
+        "ctx-doctor.md",
+        "ctx-plan.md",
+        "ctx-retrieve.md",
+        "ctx-pack.md",
+        "ctx-run.md",
+        "ctx-prune-logs.md",
+        "ctx-stats.md",
+        "ctx-gain.md",
+    ] {
+        assert!(commands_dir.join(command).exists(), "missing {command}");
+    }
+
+    for command in [
+        "ctx-dashboard.md",
+        "ctx-read.md",
+        "ctx-compare.md",
+        "ctx-toolbook-import.md",
+        "ctx-memory-search.md",
+        "ctx-benchmark-memory-ab.md",
+    ] {
+        assert!(
+            !commands_dir.join(command).exists(),
+            "unexpected core command {command}"
+        );
+    }
+
+    let instructions =
+        fs::read_to_string(tmp.path().join(".opencode/instructions/ctx-host-first.md"))
+            .expect("ctx host-first instructions");
+    assert!(instructions.contains("Install profile: `core`"));
+    assert!(instructions.contains("ctx opencode install --profile full"));
+    assert!(!instructions.contains("/ctx-dashboard"));
+    assert!(!instructions.contains("/ctx-toolbook-import"));
 }

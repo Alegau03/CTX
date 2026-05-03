@@ -74,6 +74,12 @@ ctx index
 ctx opencode install
 ```
 
+Optional lean setup:
+
+```bash
+ctx opencode install --profile core
+```
+
 Expected files:
 
 ```text
@@ -92,6 +98,8 @@ Expected behavior:
 - `ctx init` creates the local runtime.
 - `ctx index` writes source, snippets, symbols, and graph links to `.ctx/graph.db`.
 - `ctx opencode install` registers CTX as a local MCP server and generates OpenCode command files.
+- `ctx opencode install --profile core` keeps only the smallest daily slash-command surface.
+- rerunning `ctx opencode install --profile full` restores the full CTX command set.
 
 ## OpenCode-First Workflow
 
@@ -124,6 +132,14 @@ Useful first commands:
 /ctx-retrieve auth refresh token
 /ctx-pack fix failing auth test
 ```
+
+The generated OpenCode commands now prefer a more stable result-first format, for example:
+
+- `## 🧭 CTX Plan`
+- `## 📖 CTX Read`
+- `## 🧪 CTX Run`
+- `## 📊 CTX Dashboard`
+- `## 💸 CTX Gain`
 
 Expected `doctor` shape after `ctx init` + `ctx index`:
 
@@ -549,6 +565,7 @@ These are the commands most teams will use every day:
 | `/ctx-read <file> [mode]` | OpenCode-only | Reads one file with `full`, `outline`, or `digest` mode and session re-read compression |
 | `/ctx-pack <task>` | `ctx pack <task>` | Builds a compact task-specific context pack |
 | `/ctx-compare <task>` | OpenCode-only | Shows before-vs-CTX context density for one task |
+| `/ctx-dashboard` | OpenCode-only | Shows the local CTX dashboard snapshot for savings, cache ratios, latest activity, top wins, warnings, and audit activity |
 | `/ctx-gain` | `ctx stats --history 20` | Shows recent token savings, biggest wins, and repeated high-gain queries |
 | `/ctx-run <shell command>` | OpenCode-only | Runs a repo command, prunes the noisy output, and points to the raw log |
 | `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs to the root cause |

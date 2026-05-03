@@ -4,6 +4,31 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 use serde_json::{Map, Value, json};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OpencodeInstallProfile {
+    Full,
+    Core,
+}
+
+impl OpencodeInstallProfile {
+    pub fn from_str(value: &str) -> Result<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "full" => Ok(Self::Full),
+            "core" => Ok(Self::Core),
+            other => Err(anyhow!(
+                "unknown OpenCode install profile '{other}'. Expected: full or core"
+            )),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Core => "core",
+        }
+    }
+}
+
 pub fn render_mcp_config(repo_root: &Path, client: &str, port: u16) -> Result<String> {
     match client.to_ascii_lowercase().as_str() {
         "opencode" | "open-code" => Ok(serde_json::to_string_pretty(
@@ -22,40 +47,53 @@ pub fn render_mcp_config(repo_root: &Path, client: &str, port: u16) -> Result<St
     }
 }
 
-pub fn install_opencode_integration(repo_root: &Path) -> Result<Value> {
+pub fn install_opencode_integration(
+    repo_root: &Path,
+    profile: OpencodeInstallProfile,
+) -> Result<Value> {
     let config_path = upsert_opencode_project_config(repo_root)?;
     let commands_dir = repo_root.join(".opencode/commands");
     let ctx_binary = current_ctx_binary();
-    write_markdown_assets(
-        &commands_dir,
-        repo_root,
-        &ctx_binary,
-        shared_action_templates(),
-    )?;
+    let templates = action_templates_for_profile(profile);
+    remove_stale_asset_files(&commands_dir, shared_action_templates(), &templates, "md")?;
+    write_markdown_assets(&commands_dir, repo_root, &ctx_binary, &templates)?;
 
     let instructions_dir = repo_root.join(".opencode/instructions");
     fs::create_dir_all(&instructions_dir)
         .with_context(|| format!("failed to create {}", instructions_dir.display()))?;
+    let profile_marker = repo_root.join(".opencode/ctx-profile.txt");
+    fs::write(&profile_marker, format!("{}\n", profile.as_str()))
+        .with_context(|| format!("failed to write {}", profile_marker.display()))?;
 
     let mut instruction_paths = Vec::new();
-    for (filename, body) in opencode_instruction_files() {
+    for (filename, body) in opencode_instruction_files(profile) {
         let path = instructions_dir.join(filename);
         fs::write(&path, body).with_context(|| format!("failed to write {}", path.display()))?;
         instruction_paths.push(path.display().to_string());
     }
 
-    let command_paths = asset_file_paths(&commands_dir, shared_action_templates(), "md");
+    let command_paths = asset_file_paths(&commands_dir, &templates, "md");
 
     Ok(json!({
         "host": "opencode",
         "display_name": "OpenCode",
+        "profile": profile.as_str(),
         "config_path": config_path.display().to_string(),
         "commands_dir": commands_dir.display().to_string(),
         "instructions_dir": instructions_dir.display().to_string(),
+        "profile_path": profile_marker.display().to_string(),
         "commands_written": command_paths.len(),
         "command_files": command_paths,
         "instruction_files": instruction_paths,
-        "next_step": "open this repo in OpenCode and run /ctx-doctor or /ctx-pack <task>"
+        "available_profiles": ["core", "full"],
+        "next_step": match profile {
+            OpencodeInstallProfile::Full => {
+                "open this repo in OpenCode and run /ctx-doctor or /ctx-pack <task>"
+            }
+            OpencodeInstallProfile::Core => {
+                "open this repo in OpenCode and start with /ctx-doctor, or rerun `ctx opencode install --profile full` to unlock the full CTX surface"
+            }
+        }
     }))
 }
 
@@ -128,6 +166,31 @@ fn write_markdown_assets(
             ),
         )
         .with_context(|| format!("failed to write {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn remove_stale_asset_files(
+    root: &Path,
+    all_templates: &[HostActionTemplate],
+    active_templates: &[HostActionTemplate],
+    extension: &str,
+) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+    for template in all_templates {
+        if active_templates
+            .iter()
+            .any(|item| item.slug == template.slug)
+        {
+            continue;
+        }
+        let path = root.join(format!("{}.{}", template.slug, extension));
+        if path.exists() {
+            fs::remove_file(&path)
+                .with_context(|| format!("failed to remove stale asset {}", path.display()))?;
+        }
     }
     Ok(())
 }
@@ -224,6 +287,30 @@ struct HostActionTemplate {
     slug: &'static str,
     description: &'static str,
     body: &'static str,
+}
+
+fn action_templates_for_profile(profile: OpencodeInstallProfile) -> Vec<HostActionTemplate> {
+    match profile {
+        OpencodeInstallProfile::Full => shared_action_templates().to_vec(),
+        OpencodeInstallProfile::Core => shared_action_templates()
+            .iter()
+            .copied()
+            .filter(|template| {
+                matches!(
+                    template.slug,
+                    "ctx"
+                        | "ctx-doctor"
+                        | "ctx-plan"
+                        | "ctx-retrieve"
+                        | "ctx-pack"
+                        | "ctx-run"
+                        | "ctx-prune-logs"
+                        | "ctx-stats"
+                        | "ctx-gain"
+                )
+            })
+            .collect(),
+    }
 }
 
 fn shared_action_templates() -> &'static [HostActionTemplate] {
@@ -330,8 +417,13 @@ $ARGUMENTS
 
 !`{{CTX_CMD}} pack "$ARGUMENTS" --json`
 
-Print `compact_context` first.
-Then print one compact stats line with `packed_tokens`, `reduction_pct`, and `pack_path`.
+Render exactly this compact markdown:
+- `## 📦 CTX Pack`
+- `**Context**`
+- `**Stats**`
+
+Print `compact_context` first under `**Context**`.
+Then print one compact stats line under `**Stats**` with `packed_tokens`, `reduction_pct`, and `pack_path`.
 Keep any follow-up explanation to at most one short sentence."#,
         },
         HostActionTemplate {
@@ -371,14 +463,24 @@ Graph:
 Context pack:
 !`{{CTX_CMD}} pack "$ARGUMENTS" --json`
 
-Produce a concise `CTX Plan` with exactly these sections:
-- `Task`: one-sentence restatement
-- `Intent`: classify the work, for example feature, bugfix, refactor, test, docs, or investigation
-- `Relevant Context`: files, symbols, memory directives, and relationships from the CTX outputs only
-- `Token Efficiency`: use `original_estimated_tokens`, `packed_tokens`, `reduction_pct`, and `pack_path`
-- `Plan`: 4-7 ordered implementation steps
-- `Suggested Tests`: focused verification commands or test files inferred from CTX outputs
-- `Suggested First Action`: the first file or command OpenCode should use next
+Render exactly this markdown skeleton:
+- `## 🧭 CTX Plan`
+- `**Task**`
+- `**Intent**`
+- `**Relevant Context**`
+- `**Token Efficiency**`
+- `**Plan**`
+- `**Suggested Tests**`
+- `**Suggested First Action**`
+
+Under each heading, keep the content concise:
+- `**Task**`: one-sentence restatement
+- `**Intent**`: classify the work, for example feature, bugfix, refactor, test, docs, or investigation
+- `**Relevant Context**`: files, symbols, memory directives, and relationships from the CTX outputs only
+- `**Token Efficiency**`: use `original_estimated_tokens`, `packed_tokens`, `reduction_pct`, and `pack_path`
+- `**Plan**`: 4-7 ordered implementation steps
+- `**Suggested Tests**`: focused verification commands or test files inferred from CTX outputs
+- `**Suggested First Action**`: the first file or command OpenCode should use next
 
 Rules:
 - do not inspect files manually while planning
@@ -395,8 +497,14 @@ $ARGUMENTS
 
 !`{{CTX_CMD}} retrieve "$ARGUMENTS" --limit 8 --json`
 
-Start with the useful result immediately.
+Render exactly this compact markdown:
+- `## 🔎 CTX Retrieve`
+- `**Top Hits**`
+- `**Next**`
+
+Start with the useful result immediately under `**Top Hits**`.
 Show the top hits in a clean, predictable format using the returned `source`, `score`, `id`, and `reason`.
+Use `**Next**` for a single sentence about the most useful follow-up.
 Keep any follow-up summary to one short sentence."#,
         },
         HostActionTemplate {
@@ -418,8 +526,13 @@ If `$1` is missing, stop and show the usage above.
 Run:
 !`mode="${2:-digest}"; {{CTX_CMD}} --json host-read "$1" --mode "$mode"`
 
-Print `output` first.
-Then print one compact metadata line with `mode`, `cache_hit`, `fingerprint`, and `path`.
+Render exactly this compact markdown:
+- `## 📖 CTX Read`
+- `**Content**`
+- `**Metadata**`
+
+Print `output` under `**Content**`.
+Then print one compact metadata line under `**Metadata**` with `mode`, `cache_hit`, `fingerprint`, and `path`.
 Keep any explanation to one short sentence."#,
         },
         HostActionTemplate {
@@ -447,10 +560,15 @@ If `$ARGUMENTS` does not look runnable, stop and tell the user to provide the ex
 
 !`{{CTX_CMD}} --json host-run "$ARGUMENTS"`
 
-Produce a compact `CTX Run` block with:
-- `summary`
-- `pruned_output`
-- one metadata line with `exit_code`, `latency_ms`, and `raw_log_path`
+Render exactly this compact markdown:
+- `## 🧪 CTX Run`
+- `**Summary**`
+- `**Output**`
+- `**Log**`
+
+Put `summary` under `**Summary**`.
+Put `pruned_output` under `**Output**`.
+Under `**Log**`, print one compact metadata line with `exit_code`, `latency_ms`, and `raw_log_path`.
 
 Keep any explanation to one short sentence."#,
         },
@@ -773,7 +891,12 @@ Then summarize the suite KPIs and point to the generated report files."#,
 
 !`{{CTX_CMD}} --json stats`
 
-Show the stats payload first.
+Render exactly this compact markdown:
+- `## 📈 CTX Stats`
+- `**Latest Stats**`
+- `**Takeaway**`
+
+Show the stats payload first under `**Latest Stats**`.
 Then add one short sentence summarizing the latest run."#,
         },
         HostActionTemplate {
@@ -783,15 +906,41 @@ Then add one short sentence summarizing the latest run."#,
 
 !`{{CTX_CMD}} --json stats --history 20`
 
-Produce a compact `CTX Gain` block with:
+Render exactly this compact markdown:
+- `## 💸 CTX Gain`
+- `**Savings**`
+- `**Top Queries**`
+- `**Artifacts**`
+
+Under `**Savings**`, include:
 - `sampled_runs`
 - `estimated_tokens_saved`
 - `latest_reduction_pct`
 - `average_reduction_pct`
 - `max_reduction_pct`
-- `top_queries`
 
-If `latest_pack_path` is present, show it on one compact line.
+Under `**Top Queries**`, list `top_queries`.
+
+If `latest_pack_path` is present, show it under `**Artifacts**` on one compact line.
+Keep any follow-up explanation to one short sentence."#,
+        },
+        HostActionTemplate {
+            slug: "ctx-dashboard",
+            description: "Benchmark | Show the local CTX dashboard snapshot",
+            body: r#"OpenCode-only CTX dashboard snapshot for this repository.
+
+!`{{CTX_CMD}} --json host-dashboard`
+
+Render exactly this compact markdown:
+- `## 📊 CTX Dashboard`
+- `**Savings**`
+- `**Cache**`
+- `**Latest Activity**`
+- `**Top Wins**`
+- `**Warnings**`
+- `**Recent Audit**`
+
+Show the useful result immediately.
 Keep any follow-up explanation to one short sentence."#,
         },
         HostActionTemplate {
@@ -833,16 +982,20 @@ Then show the output and explain how to use it."#,
     ]
 }
 
-fn opencode_instruction_files() -> [(&'static str, &'static str); 1] {
-    [(
-        "ctx-host-first.md",
-        r#"# CTX Host-First Rules For OpenCode
+fn opencode_instruction_files(profile: OpencodeInstallProfile) -> Vec<(&'static str, String)> {
+    vec![("ctx-host-first.md", host_first_instructions(profile))]
+}
+
+fn host_first_instructions(profile: OpencodeInstallProfile) -> String {
+    match profile {
+        OpencodeInstallProfile::Full => r#"# CTX Host-First Rules For OpenCode
 
 CTX is the local context runtime for this repository.
 
 ## Primary Workflow
 
 - Stay inside OpenCode for normal work.
+- Install profile: `full`
 - Prefer CTX slash commands and CTX MCP tools before broad file dumping.
 - Keep the current OpenCode-selected model and agent in control.
 - Do not revive wrapper-style workflows like `ctx wrap` or `ctx opencode run`.
@@ -862,10 +1015,11 @@ For normal prompts, prefer CTX-first behavior:
 9. For ambiguity about likely scope or intent, use `/ctx-explain`.
 10. For implementation planning, use `/ctx-plan` to combine retrieval, graph, memory, and pack signals before editing.
 11. For quick before-vs-packed context density, use `/ctx-compare`.
-12. For recent token savings and biggest pack wins, use `/ctx-gain`.
-13. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
-14. For reusable lessons learned during work, use `/ctx-learn`.
-15. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
+12. For a local snapshot of savings, cache reuse, and warnings, use `/ctx-dashboard`.
+13. For recent token savings and biggest pack wins, use `/ctx-gain`.
+14. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
+15. For reusable lessons learned during work, use `/ctx-learn`.
+16. For validation of graph-memory token savings, use `/ctx-benchmark-memory-ab` or `/ctx-benchmark-memory-suite`.
 
 ## Memory And Rules
 
@@ -885,6 +1039,42 @@ For normal prompts, prefer CTX-first behavior:
 
 - Respect CTX privacy defaults and sensitive file blocking behavior.
 - Keep all project data local unless the host or the user explicitly chooses otherwise.
-"#,
-    )]
+"#
+        .to_string(),
+        OpencodeInstallProfile::Core => r#"# CTX Host-First Rules For OpenCode
+
+CTX is the local context runtime for this repository.
+
+## Primary Workflow
+
+- Stay inside OpenCode for normal work.
+- Install profile: `core`
+- Prefer the lean CTX slash-command surface before broad file dumping.
+- Keep the current OpenCode-selected model and agent in control.
+- Do not revive wrapper-style workflows like `ctx wrap` or `ctx opencode run`.
+- If you need the wider command surface later, rerun `ctx opencode install --profile full`.
+
+## Automatic CTX Usage
+
+For normal prompts with the core profile, prefer this order:
+
+1. If repository readiness is unclear, run `/ctx-doctor`.
+2. For code understanding, start with `/ctx-retrieve`.
+3. For implementation planning, use `/ctx-plan`.
+4. For context construction, use `/ctx-pack`.
+5. For debugging logs, prefer `/ctx-run`, and use `/ctx-prune-logs` when the user already has raw output or explicitly wants pruning only.
+6. For local measurements, use `/ctx-stats` or `/ctx-gain`.
+
+## Upgrade Path
+
+- The core profile intentionally keeps only the smallest daily workflow surface.
+- To unlock read cache tools, memory workflows, toolbooks, benchmarks, and the dashboard, rerun `ctx opencode install --profile full`.
+
+## Safety
+
+- Respect CTX privacy defaults and sensitive file blocking behavior.
+- Keep all project data local unless the host or the user explicitly chooses otherwise.
+"#
+        .to_string(),
+    }
 }

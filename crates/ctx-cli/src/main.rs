@@ -13,9 +13,11 @@ use ctx_core::{
 use ctx_graph::GraphStore;
 use ctx_hooks::apply_pre_prompt_hook;
 use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
+mod dashboard;
 mod host_integration;
 
-use host_integration::{install_opencode_integration, render_mcp_config};
+use dashboard::{build_dashboard_value, render_dashboard};
+use host_integration::{OpencodeInstallProfile, install_opencode_integration, render_mcp_config};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -98,6 +100,8 @@ enum Commands {
     HostRun(HostRunArgs),
     #[command(hide = true)]
     HostRead(HostReadArgs),
+    #[command(hide = true)]
+    HostDashboard,
 }
 
 #[derive(Debug, Subcommand)]
@@ -115,7 +119,7 @@ enum PruneCommands {
 
 #[derive(Debug, Subcommand)]
 enum HostInstallCommands {
-    Install,
+    Install(OpencodeInstallArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -273,6 +277,12 @@ struct HostReadArgs {
     mode: String,
 }
 
+#[derive(Debug, Args)]
+struct OpencodeInstallArgs {
+    #[arg(long, default_value = "full")]
+    profile: String,
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("ctx error: {err:#}");
@@ -399,8 +409,12 @@ fn run() -> Result<()> {
             }
         }
         Commands::Opencode { command } => match command {
-            HostInstallCommands::Install => {
-                print_host_install_report(install_opencode_integration(&repo_root)?, cli.json)?;
+            HostInstallCommands::Install(args) => {
+                let profile = OpencodeInstallProfile::from_str(&args.profile)?;
+                print_host_install_report(
+                    install_opencode_integration(&repo_root, profile)?,
+                    cli.json,
+                )?;
             }
         },
         Commands::Mcp { command } => match command {
@@ -705,6 +719,16 @@ fn run() -> Result<()> {
                 );
             }
         }
+        Commands::HostDashboard => {
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&build_dashboard_value(&repo_root)?)?
+                );
+            } else {
+                println!("{}", render_dashboard(&repo_root)?);
+            }
+        }
     }
 
     Ok(())
@@ -738,6 +762,9 @@ fn print_host_install_report(report: serde_json::Value, as_json: bool) -> Result
         "installed {} integration",
         report["display_name"].as_str().unwrap_or("CTX host")
     );
+    if let Some(profile) = report["profile"].as_str() {
+        println!("profile: {profile}");
+    }
     println!(
         "config_path: {}",
         report["config_path"].as_str().unwrap_or("")
@@ -829,6 +856,7 @@ fn render_command_center(repo_root: &Path) -> String {
     let config_path = repo_root.join(".ctx/config.toml");
     let graph_path = repo_root.join(".ctx/graph.db");
     let ready = config_path.is_file() && indexed_file_count(&graph_path).unwrap_or(0) > 0;
+    let profile = installed_opencode_profile(repo_root);
     let next = if !config_path.is_file() {
         "ctx init"
     } else if indexed_file_count(&graph_path).unwrap_or(0) == 0 {
@@ -847,14 +875,32 @@ fn render_command_center(repo_root: &Path) -> String {
         _ => "the repository is indexed and ready for task-focused context packing",
     };
 
-    format!(
-        "CTX Command Center\n\nrepo: {} | status: {}\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-index` - build or refresh the graph\n- `/ctx-memory-bootstrap` - import AGENTS-style project rules\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nSetup\n- `/ctx-init`\n- `/ctx-index`\n- `/ctx-reindex`\n- `/ctx-opencode-install`\n\nPlanning\n- `/ctx-plan <task>`\n\nContext\n- `/ctx-pack <task>`\n- `/ctx-compare <task>`\n- `/ctx-ask <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-read <file> [mode]`\n- `/ctx-graph-query <query>`\n- `/ctx-explain <task>`\n\nMemory\n- `/ctx-memory-bootstrap`\n- `/ctx-memory-search <topic>`\n- `/ctx-memory-list`\n- `/ctx-memory-get <key>`\n- `/ctx-memory-set <key> <body>`\n- `/ctx-memory-export <file>`\n\nToolbooks\n- `/ctx-toolbook-import <name> <file>`\n- `/ctx-toolbook-search <name> \"<query>\"`\n- `/ctx-toolbook-list <name>`\n- `/ctx-toolbook-pack <name> \"<task>\"`\n\nLearning\n- `/ctx-learn <key> \"<body>\"`\n\nDebug\n- `/ctx-run <shell command>`\n- `/ctx-prune-logs <shell command>`\n- `/ctx-prune-diff <topic>`\n- `/ctx-hook <task>`\n\nBenchmark\n- `/ctx-gain`\n- `/ctx-benchmark-memory-ab ...`\n- `/ctx-benchmark-memory-suite ...`\n- `/ctx-stats`\n\nMCP\n- `/ctx-mcp-stdio`\n- `/ctx-mcp-serve`\n- `/ctx-mcp-config-opencode`\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
-        repo_root
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("repo"),
-        if ready { "ready" } else { "needs setup" },
-    )
+    let repo_name = repo_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repo");
+
+    match profile {
+        OpencodeInstallProfile::Core => format!(
+            "CTX Command Center\n\nrepo: {} | status: {} | profile: core\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-retrieve <query>` - fetch the smallest useful context slice\n- `/ctx-plan <task>` - turn retrieval and packs into an implementation plan\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nCore Surface\n- `/ctx-doctor`\n- `/ctx-plan <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-pack <task>`\n- `/ctx-run <shell command>`\n- `/ctx-prune-logs <shell command>`\n- `/ctx-stats`\n- `/ctx-gain`\n\nUpgrade\n- rerun `ctx opencode install --profile full` to unlock read cache, memory, toolbooks, dashboard, and benchmarks\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
+            repo_name,
+            if ready { "ready" } else { "needs setup" },
+        ),
+        OpencodeInstallProfile::Full => format!(
+            "CTX Command Center\n\nrepo: {} | status: {} | profile: full\n\nRecommended Start\n- `/ctx-doctor` - check repo health and next step\n- `/ctx-index` - build or refresh the graph\n- `/ctx-memory-bootstrap` - import AGENTS-style project rules\n- `/ctx-pack <task>` - build the smallest useful context pack\n\nSetup\n- `/ctx-init`\n- `/ctx-index`\n- `/ctx-reindex`\n- `/ctx-opencode-install`\n\nPlanning\n- `/ctx-plan <task>`\n\nContext\n- `/ctx-pack <task>`\n- `/ctx-compare <task>`\n- `/ctx-ask <task>`\n- `/ctx-retrieve <query>`\n- `/ctx-read <file> [mode]`\n- `/ctx-graph-query <query>`\n- `/ctx-explain <task>`\n\nMemory\n- `/ctx-memory-bootstrap`\n- `/ctx-memory-search <topic>`\n- `/ctx-memory-list`\n- `/ctx-memory-get <key>`\n- `/ctx-memory-set <key> <body>`\n- `/ctx-memory-export <file>`\n\nToolbooks\n- `/ctx-toolbook-import <name> <file>`\n- `/ctx-toolbook-search <name> \"<query>\"`\n- `/ctx-toolbook-list <name>`\n- `/ctx-toolbook-pack <name> \"<task>\"`\n\nLearning\n- `/ctx-learn <key> \"<body>\"`\n\nDebug\n- `/ctx-run <shell command>`\n- `/ctx-prune-logs <shell command>`\n- `/ctx-prune-diff <topic>`\n- `/ctx-hook <task>`\n\nBenchmark\n- `/ctx-dashboard`\n- `/ctx-gain`\n- `/ctx-benchmark-memory-ab ...`\n- `/ctx-benchmark-memory-suite ...`\n- `/ctx-stats`\n\nMCP\n- `/ctx-mcp-stdio`\n- `/ctx-mcp-serve`\n- `/ctx-mcp-config-opencode`\n\nBest next command:\n1. `{next}`\n2. copy-paste example: `{next}`\n3. why next: {why}",
+            repo_name,
+            if ready { "ready" } else { "needs setup" },
+        ),
+    }
+}
+
+fn installed_opencode_profile(repo_root: &Path) -> OpencodeInstallProfile {
+    let marker = repo_root.join(".opencode/ctx-profile.txt");
+    let body = std::fs::read_to_string(marker).ok();
+    body.as_deref()
+        .map(str::trim)
+        .and_then(|value| OpencodeInstallProfile::from_str(value).ok())
+        .unwrap_or(OpencodeInstallProfile::Full)
 }
 
 fn indexed_file_count(graph_path: &Path) -> Option<usize> {
@@ -895,6 +941,7 @@ Each command shows what it does and one usage example.
 
 Primary OpenCode path:
 - run `ctx opencode install` once in the repo
+- use `ctx opencode install --profile core` when you want the lean daily surface first
 - open `opencode`
 - use `/ctx-*` commands inside OpenCode
 - legacy wrapper commands have been removed from the public CLI
@@ -952,9 +999,10 @@ Example: ctx explain "fix failing pytest in auth"
 What it does: Runs hybrid retrieval (graph + snippets + semantic ranking).
 Example: ctx retrieve "refresh token auth failure" --limit 5
 
-14) ctx opencode install
+14) ctx opencode install [--profile full|core]
 What it does: Primary OpenCode bootstrap. Writes `opencode.json` and `.opencode/commands/*.md` for host-native CTX usage.
 Example: ctx opencode install
+Example: ctx opencode install --profile core
 
 15) ctx mcp serve [--port p] [--once]
 What it does: Starts local MCP-compatible RPC server on localhost.

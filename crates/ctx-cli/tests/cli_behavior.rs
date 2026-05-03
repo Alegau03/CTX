@@ -261,6 +261,114 @@ fn stats_history_reports_gain_summary_after_multiple_packs() {
 }
 
 #[test]
+fn host_dashboard_reports_savings_and_cache_sections() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        "fn validate_refresh_token() -> bool { true }\n",
+    )
+    .expect("write");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("index")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["pack", "fix auth", "--json"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "host-read", "src/auth.rs", "--mode", "digest"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "host-dashboard"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("dashboard output");
+    assert!(output.status.success());
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("dashboard json");
+    assert!(value["savings"].is_object());
+    assert!(value["cache"].is_object());
+    assert!(value["latest_activity"].is_object());
+    assert!(value["top_wins"].is_object());
+    assert!(value["warnings"].is_array());
+    assert_eq!(value["cache"]["read"]["tracked_files"].as_u64(), Some(1));
+    assert!(value["cache"]["index"]["reuse_ratio_pct"].is_number());
+    assert!(value["cache"]["read"]["hit_rate_pct"].is_number());
+    assert!(value["savings"]["savings_ratio_pct"].is_number());
+    assert!(value["latest_activity"]["latest_query"].is_string());
+    assert!(value["top_wins"]["best_query"].is_object());
+}
+
+#[test]
+fn host_dashboard_text_render_includes_refined_sections() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("init")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
+    fs::write(
+        tmp.path().join("src/auth.rs"),
+        "fn validate_refresh_token() -> bool { true }\n",
+    )
+    .expect("write");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("index")
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["pack", "fix auth", "--json"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["host-read", "src/auth.rs", "--mode", "digest"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("host-dashboard")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("📊 CTX Dashboard"))
+        .stdout(predicate::str::contains("**Latest Activity**"))
+        .stdout(predicate::str::contains("**Top Wins**"))
+        .stdout(predicate::str::contains("read_hit_rate_pct="));
+}
+
+#[test]
 fn mcp_serve_once_handles_rpc_tools_list() {
     let tmp = tempdir().expect("tempdir");
 
@@ -454,7 +562,8 @@ fn opencode_install_creates_project_config_and_command_files() {
 
     assert!(output.status.success());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
-    assert_eq!(report["commands_written"], 41);
+    assert_eq!(report["profile"], "full");
+    assert_eq!(report["commands_written"], 42);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -507,6 +616,7 @@ fn opencode_install_creates_project_config_and_command_files() {
         "ctx-graph-query.md",
         "ctx-plan.md",
         "ctx-compare.md",
+        "ctx-dashboard.md",
         "ctx-gain.md",
         "ctx-run.md",
         "ctx-prune-logs.md",
@@ -583,12 +693,28 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(gain_command.contains("--json stats --history 20"));
     assert!(gain_command.contains("sampled_runs"));
     assert!(gain_command.contains("estimated_tokens_saved"));
+    assert!(gain_command.contains("## 💸 CTX Gain"));
+    assert!(gain_command.contains("**Savings**"));
+    assert!(gain_command.contains("**Top Queries**"));
+
+    let dashboard_command =
+        std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-dashboard.md"))
+            .expect("read dashboard command");
+    assert!(dashboard_command.contains("OpenCode-only"));
+    assert!(dashboard_command.contains("--json host-dashboard"));
+    assert!(dashboard_command.contains("CTX Dashboard"));
+    assert!(dashboard_command.contains("## 📊 CTX Dashboard"));
+    assert!(dashboard_command.contains("**Warnings**"));
+    assert!(dashboard_command.contains("**Latest Activity**"));
+    assert!(dashboard_command.contains("**Top Wins**"));
 
     let read_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
         .expect("read read command");
     assert!(read_command.contains("OpenCode-only"));
     assert!(read_command.contains("host-read"));
     assert!(read_command.contains("full`, `outline`, or `digest`"));
+    assert!(read_command.contains("## 📖 CTX Read"));
+    assert!(read_command.contains("**Metadata**"));
 
     let run_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-run.md"))
         .expect("read run command");
@@ -596,6 +722,9 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(run_command.contains("--json host-run \"$ARGUMENTS\""));
     assert!(run_command.contains("summary"));
     assert!(run_command.contains("raw_log_path"));
+    assert!(run_command.contains("## 🧪 CTX Run"));
+    assert!(run_command.contains("**Summary**"));
+    assert!(run_command.contains("**Log**"));
 
     let plan_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-plan.md"))
         .expect("read plan command");
@@ -605,6 +734,9 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(plan_command.contains("graph query \"$ARGUMENTS\""));
     assert!(plan_command.contains("pack \"$ARGUMENTS\" --json"));
     assert!(plan_command.contains("Token Efficiency"));
+    assert!(plan_command.contains("## 🧭 CTX Plan"));
+    assert!(plan_command.contains("**Task**"));
+    assert!(plan_command.contains("**Suggested First Action**"));
 
     let toolbook_import =
         std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-toolbook-import.md"))
@@ -618,6 +750,87 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(learn_command.contains("OpenCode-only"));
     assert!(learn_command.contains("memory set"));
     assert!(learn_command.contains("--source learned"));
+}
+
+#[test]
+fn opencode_install_core_profile_writes_a_leaner_surface() {
+    let tmp = tempdir().expect("tempdir");
+
+    let output = Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["--json", "opencode", "install", "--profile", "core"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("run ctx");
+
+    assert!(output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
+    assert_eq!(report["profile"], "core");
+    assert_eq!(report["commands_written"], 9);
+
+    let commands_dir = tmp.path().join(".opencode/commands");
+    for command in [
+        "ctx.md",
+        "ctx-doctor.md",
+        "ctx-plan.md",
+        "ctx-retrieve.md",
+        "ctx-pack.md",
+        "ctx-run.md",
+        "ctx-prune-logs.md",
+        "ctx-stats.md",
+        "ctx-gain.md",
+    ] {
+        assert!(commands_dir.join(command).exists(), "missing {command}");
+    }
+
+    for command in [
+        "ctx-dashboard.md",
+        "ctx-read.md",
+        "ctx-compare.md",
+        "ctx-toolbook-import.md",
+        "ctx-memory-bootstrap.md",
+    ] {
+        assert!(
+            !commands_dir.join(command).exists(),
+            "unexpected core command {command}"
+        );
+    }
+
+    let host_first_text =
+        std::fs::read_to_string(tmp.path().join(".opencode/instructions/ctx-host-first.md"))
+            .expect("read host-first instructions");
+    assert!(host_first_text.contains("Install profile: `core`"));
+    assert!(host_first_text.contains("/ctx-plan"));
+    assert!(host_first_text.contains("/ctx-run"));
+    assert!(host_first_text.contains("/ctx-gain"));
+    assert!(!host_first_text.contains("/ctx-toolbook-import"));
+    assert!(!host_first_text.contains("/ctx-dashboard"));
+    assert!(host_first_text.contains("ctx opencode install --profile full"));
+}
+
+#[test]
+fn menu_reflects_the_installed_core_profile() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["opencode", "install", "--profile", "core"])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("menu")
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("profile: core"))
+        .stdout(predicate::str::contains("Core Surface"))
+        .stdout(predicate::str::contains("/ctx-dashboard").not())
+        .stdout(predicate::str::contains(
+            "ctx opencode install --profile full",
+        ));
 }
 
 #[test]
@@ -766,6 +979,7 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(opencode_smoke.contains(".opencode/commands/ctx-pack.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-plan.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-compare.md"));
+    assert!(opencode_smoke.contains(".opencode/commands/ctx-dashboard.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-gain.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-read.md"));
     assert!(opencode_smoke.contains(".opencode/commands/ctx-run.md"));
@@ -791,9 +1005,11 @@ fn release_assets_are_present_and_document_install_paths() {
     assert!(install_docs.contains("scripts/release/verify-artifact.sh"));
     assert!(install_docs.contains("release-manifest.json"));
     assert!(readme.contains("/ctx-gain"));
+    assert!(readme.contains("/ctx-dashboard"));
     assert!(readme.contains("/ctx-read"));
     assert!(readme.contains("/ctx-run"));
     assert!(guide.contains("/ctx-gain"));
+    assert!(guide.contains("/ctx-dashboard"));
     assert!(guide.contains("/ctx-read"));
     assert!(guide.contains("/ctx-run"));
     assert!(readme.contains("guide.md"));

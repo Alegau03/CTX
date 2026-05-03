@@ -91,13 +91,24 @@ ctx opencode install
 opencode
 ```
 
+If you want the smallest possible OpenCode surface first, install the lean profile instead:
+
+```bash
+ctx opencode install --profile core
+```
+
+Profile notes:
+
+- `full` (default): full CTX slash-command surface, including memory, toolbooks, dashboard, and benchmark helpers
+- `core`: only the daily essentials like `/ctx-doctor`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-run`, `/ctx-prune-logs`, `/ctx-stats`, and `/ctx-gain`
+
 Inside OpenCode, start with:
 
 ```text
 /ctx
 ```
 
-Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-read <file> [mode]`, `/ctx-pack`, `/ctx-compare`, `/ctx-gain`, `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
+Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-read <file> [mode]`, `/ctx-pack`, `/ctx-compare`, `/ctx-dashboard`, `/ctx-gain`, `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
 
 For full usage, examples, and expected output, see [guide.md](guide.md).
 
@@ -143,13 +154,16 @@ External validation completed:
 | Area | Current state |
 |---|---|
 | OpenCode integration | `ctx opencode install` writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md` |
+| Install profiles | `ctx opencode install --profile full|core` lets you choose between the full CTX surface and a lean daily workflow |
 | Command menu | `/ctx` opens a categorized CTX command center inside OpenCode |
+| Output polish | Key OpenCode commands now render stable markdown blocks such as `## 🧭 CTX Plan`, `## 📊 CTX Dashboard`, and `## 🧪 CTX Run` |
 | Graph memory | Bootstrap/import/search/list/get/set/delete/export project directives, including compatibility seeds from `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions |
 | Planning | `/ctx-plan <task>` combines graph, memory, retrieval, and token-reduced pack signals into an implementation plan |
 | Read cache | `/ctx-read <file> [mode]` supports `full`, `outline`, and `digest` reads with session re-read compression for unchanged files |
 | Delta-aware indexing | Repeated `ctx index` runs reuse unchanged files, write local cache reports, and avoid reprocessing identical content |
 | Context packing | Builds compact task packs with graph, memory, diff, failure, and attachment signals |
 | Context comparison | `/ctx-compare <task>` shows before-vs-CTX token density for one task pack |
+| Dashboard | `/ctx-dashboard` shows savings, cache ratios, latest activity, top wins, warnings, and recent audit activity in one local snapshot |
 | Gain reporting | `/ctx-gain` shows recent token savings, biggest wins, and top repeated queries from local stats history |
 | Command compression | `/ctx-run <shell command>` runs a local repo command, prunes the noisy output, and keeps the root cause plus raw-log path |
 | Toolbooks | OpenCode-only `/ctx-toolbook-*` commands store and search large CLI manuals without putting them in `AGENTS.md` |
