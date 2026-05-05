@@ -1,6 +1,6 @@
 {
   "name": "ctx-bin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Prebuilt CTX binary distribution for npm users",
   "license": "MIT",
   "repository": {

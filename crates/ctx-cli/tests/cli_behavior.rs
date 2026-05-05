@@ -1272,7 +1272,7 @@ fn release_verify_script_validates_packaged_artifact() {
 }
 
 #[test]
-fn release_version_references_target_v0_2_0() {
+fn release_version_references_target_v0_2_1() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root_manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root cargo manifest");
     let cli_manifest =
@@ -1284,12 +1284,12 @@ fn release_version_references_target_v0_2_0() {
         fs::read_to_string(root.join("scripts/release/build.sh")).expect("build script");
     let readme = fs::read_to_string(root.join("README.md")).expect("readme");
 
-    assert!(root_manifest.contains("version = \"0.2.0\""));
+    assert!(root_manifest.contains("version = \"0.2.1\""));
     assert!(cli_manifest.contains("version.workspace = true"));
-    assert!(npm_manifest.contains("\"version\": \"0.2.0\""));
-    assert!(formula.contains("v0.2.0"));
-    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.0}\""));
-    assert!(readme.contains("ctx-0.2.0-aarch64-apple-darwin.tar.gz"));
+    assert!(npm_manifest.contains("\"version\": \"0.2.1\""));
+    assert!(formula.contains("v0.2.1"));
+    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.1}\""));
+    assert!(readme.contains("ctx-0.2.1-aarch64-apple-darwin.tar.gz"));
 }
 
 #[test]

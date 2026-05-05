@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE_FIXTURE="$ROOT_DIR/demo/fixtures/opencode-auth-lab"
 CTX_BIN="${1:-$ROOT_DIR/target/debug/ctx}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 or python is required for MCP smoke" >&2
+  exit 1
+fi
 
 if [[ -n "${CTX_DEMO_FIXTURE:-}" ]]; then
   FIXTURE="$CTX_DEMO_FIXTURE"
@@ -18,7 +24,7 @@ rm -rf "$FIXTURE/.ctx"
 "$CTX_BIN" --repo-root "$FIXTURE" init >/dev/null
 "$CTX_BIN" --repo-root "$FIXTURE" index >/dev/null
 
-CTX_BIN="$CTX_BIN" FIXTURE="$FIXTURE" python3 - <<'PY'
+CTX_BIN="$CTX_BIN" FIXTURE="$FIXTURE" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 import re

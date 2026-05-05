@@ -7,6 +7,12 @@ OUTPUT_DIR="${CTX_EXTERNAL_BENCHMARK_OUTPUT_DIR:-$INPUT_DIR}"
 CTX_BIN="${1:-$ROOT_DIR/target/debug/ctx}"
 REPO_URL="${CTX_EXTERNAL_BENCHMARK_REPO_URL:-https://github.com/agentsmd/agents.md.git}"
 REPO_NAME="${CTX_EXTERNAL_BENCHMARK_REPO_NAME:-agentsmd}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 or python is required to render the benchmark summary" >&2
+  exit 1
+fi
 
 if [[ "$CTX_BIN" != /* ]]; then
   CTX_BIN="$ROOT_DIR/$CTX_BIN"
@@ -46,7 +52,7 @@ EOF
   --report-out "$OUTPUT_DIR/report.md" \
   --json-out "$OUTPUT_DIR/report.json" >/dev/null
 
-python3 - "$OUTPUT_DIR/report.json" <<'PY'
+"$PYTHON_BIN" - "$OUTPUT_DIR/report.json" <<'PY'
 import json
 import sys
 from pathlib import Path
