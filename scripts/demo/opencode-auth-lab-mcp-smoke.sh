@@ -28,10 +28,11 @@ CTX_BIN="$CTX_BIN" FIXTURE="$FIXTURE" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 import re
-import select
 import subprocess
 import sys
+import threading
 import time
+from queue import Empty, Queue
 
 cmd = [
     os.environ["CTX_BIN"],
@@ -41,6 +42,20 @@ cmd = [
     "stdio",
 ]
 p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+stdout_queue = Queue()
+stderr_queue = Queue()
+
+
+def pump(stream, queue):
+    while True:
+        chunk = stream.read(1)
+        if not chunk:
+            break
+        queue.put(chunk)
+
+
+threading.Thread(target=pump, args=(p.stdout, stdout_queue), daemon=True).start()
+threading.Thread(target=pump, args=(p.stderr, stderr_queue), daemon=True).start()
 
 
 def send(obj):
@@ -50,27 +65,34 @@ def send(obj):
     p.stdin.flush()
 
 
-def recv(timeout=3):
-    fd = p.stdout.fileno()
+def recv(timeout=3, required=True):
     buf = b""
-    start = time.time()
+    deadline = time.time() + timeout
     while b"\r\n\r\n" not in buf:
-        if time.time() - start > timeout:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            if required:
+                raise TimeoutError("timed out while waiting for MCP headers")
             return None
-        ready, _, _ = select.select([fd], [], [], 0.1)
-        if ready:
-            buf += os.read(fd, 4096)
+        try:
+            buf += stdout_queue.get(timeout=min(0.1, remaining))
+        except Empty:
+            if p.poll() is not None and not required:
+                return None
     head, rest = buf.split(b"\r\n\r\n", 1)
     match = re.search(br"Content-Length:\s*(\d+)", head)
     if not match:
         raise RuntimeError(f"missing Content-Length header: {head!r}")
     length = int(match.group(1))
     while len(rest) < length:
-        if time.time() - start > timeout:
+        remaining = deadline - time.time()
+        if remaining <= 0:
             raise TimeoutError("timed out while reading MCP body")
-        ready, _, _ = select.select([fd], [], [], 0.1)
-        if ready:
-            rest += os.read(fd, 4096)
+        try:
+            rest += stdout_queue.get(timeout=min(0.1, remaining))
+        except Empty:
+            if p.poll() is not None:
+                raise RuntimeError("MCP process exited before completing the response body")
     return json.loads(rest[:length].decode())
 
 
@@ -79,7 +101,7 @@ initialize = recv()
 assert initialize["result"]["serverInfo"]["name"] == "ctx-mcp", initialize
 
 send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
-notification = recv(timeout=0.5)
+notification = recv(timeout=0.5, required=False)
 assert notification is None, notification
 
 send({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
@@ -122,13 +144,14 @@ send({
 pack = recv(timeout=5)
 assert "compact_context" in json.dumps(pack), pack
 
-stderr = ""
-if p.stderr is not None:
-    ready, _, _ = select.select([p.stderr.fileno()], [], [], 0)
-    if ready:
-        stderr = os.read(p.stderr.fileno(), 4096).decode()
+stderr = b""
+while True:
+    try:
+        stderr += stderr_queue.get_nowait()
+    except Empty:
+        break
 if stderr.strip():
-    print(stderr, file=sys.stderr)
+    print(stderr.decode(), file=sys.stderr)
 p.kill()
 p.wait(timeout=1)
 PY
