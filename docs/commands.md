@@ -1,6 +1,6 @@
 # CTX Commands
 
-This document is the single reference for the CTX command surface.
+This is the single reference for the CTX command surface.
 
 Use it when you want:
 
@@ -9,7 +9,7 @@ Use it when you want:
 - a plain-English explanation of what each command does
 - one concrete example per command
 
-For the end-to-end workflow, see [guide.md](../guide.md).
+For the end-to-end workflow, start with [guide.md](../guide.md).
 
 ## OpenCode-Only Commands
 
@@ -85,12 +85,27 @@ ctx reindex src tests
 ctx doctor
 ```
 
+### `ctx update [--check] [--yes] [--channel <name>]`
+
+- OpenCode: none; this is a public CLI install-management command
+- What it does: checks the latest CTX version, detects how CTX was installed when possible, and prints the safest update path for that install channel.
+- `--check`: reports current version, latest version, detected channel, and whether an update is available without modifying anything
+- `--channel`: forces one of `installer`, `cargo`, `npm`, or `brew`
+- `--yes`: executes the installer update path only when the install channel is confidently detected as `installer`; other channels stay guided and print the exact manual command
+
+```bash
+ctx update --check
+ctx update --channel cargo
+ctx update --channel brew
+```
+
 ### `ctx opencode install`
 
 - OpenCode: `/ctx-opencode-install`
 - What it does: writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md`.
+- Full profile extras: also provisions `.opencode/tui.json`, `.opencode/plugins/ctx-dashboard.tsx`, and `.opencode/package.json` so OpenCode can render the live `CTX Dashboard` in the right sidebar.
 - Profiles:
-  - `full` (default): full OpenCode CTX surface
+  - `full` (default): full OpenCode CTX surface plus the live sidebar dashboard
   - `core`: lean daily workflow with only `/ctx`, `/ctx-doctor`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-run`, `/ctx-prune-logs`, `/ctx-stats`, and `/ctx-gain`
 
 ```bash
@@ -171,7 +186,8 @@ ctx pack "fix failing auth test" --attach /tmp/fail.log --json
 ### `/ctx-dashboard` OpenCode-only
 
 - CLI equivalent: none; it uses the hidden helper `ctx --json host-dashboard` internally from OpenCode.
-- What it does: shows a local dashboard snapshot for savings, cache ratios, latest activity, top wins, warnings, and recent audit activity.
+- What it does: shows a local dashboard snapshot for savings, cache ratios, top wins, recent audit activity, and related runtime telemetry.
+- Sidebar note: the `full` OpenCode install profile also exposes the same savings and cache story in the live right-sidebar `CTX Dashboard`, in a more compact form focused on metrics, cache behavior, top win, and latest artifact.
 - Output format: stable markdown sections beginning with `## 📊 CTX Dashboard`.
 
 ```text

@@ -5,9 +5,11 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Context pack assembly and rewriting for CTX"
 
 [dependencies]
-ctx-token = { path = "../ctx-token" }
+ctx-token.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

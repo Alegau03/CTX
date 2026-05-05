@@ -1,10 +1,15 @@
 [package]
-name = "ctx-cli"
+name = "ctx"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+description = "OpenCode-first graph memory and local context runtime for coding agents"
+homepage = "https://github.com/Alegau03/CTX"
+readme = "../../README.md"
+keywords = ["opencode", "mcp", "context", "agent", "graph"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "ctx"
@@ -13,11 +18,12 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-ctx-core = { path = "../ctx-core" }
-ctx-graph = { path = "../ctx-graph" }
-ctx-intake = { path = "../ctx-intake" }
-ctx-hooks = { path = "../ctx-hooks" }
-ctx-mcp = { path = "../ctx-mcp" }
+ctx-core.workspace = true
+ctx-graph.workspace = true
+ctx-intake.workspace = true
+ctx-hooks.workspace = true
+ctx-mcp.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

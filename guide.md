@@ -4,7 +4,7 @@ This is the operational manual for using CTX inside OpenCode.
 
 If you only want the product overview, start with [README.md](README.md). This guide is intentionally command-heavy: it shows what to run, where to run it, and what should happen.
 
-For a recording-ready walkthrough, see [docs/demo-script.md](docs/demo-script.md).
+For a recording-ready walkthrough, see [docs/demo-script.md](docs/demo-script.md). For exact syntax of every command, jump to [docs/commands.md](docs/commands.md).
 
 ## Contents
 
@@ -24,24 +24,29 @@ For a recording-ready walkthrough, see [docs/demo-script.md](docs/demo-script.md
 
 Use CTX in this order in a real repository:
 
-1. Confirm the project builds/tests normally.
+1. Confirm the project already builds or tests normally.
 2. Install the `ctx` binary.
 3. Run `ctx init`.
 4. Run `ctx index`.
 5. Run `ctx opencode install`.
 6. Open `opencode` in the repo.
-7. Run `/ctx` inside OpenCode.
+7. Run `/ctx`.
 8. Bootstrap graph memory with `/ctx-memory-bootstrap`.
-9. Use `/ctx-memory-search`, `/ctx-retrieve`, and `/ctx-pack` during real work.
-10. Run benchmarks once the graph-memory workflow is populated.
+9. Use `/ctx-plan`, `/ctx-retrieve`, `/ctx-read`, `/ctx-pack`, and `/ctx-run` during normal work.
+10. Use `/ctx-gain` and `/ctx-dashboard` to verify the token-savings story.
 
 ## Install CTX
 
-From the repository root:
+Recommended public install paths:
 
 ```bash
-cargo install --locked --path crates/ctx-cli
+cargo install ctx
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
+npm i -g ctx-bin
+brew tap Alegau03/ctx && brew install ctx
 ```
+
+If you want the full installation matrix, update paths, release archive flow, or verification steps, use [docs/install.md](docs/install.md).
 
 If your shell cannot find `ctx` after install:
 
@@ -54,7 +59,16 @@ Verify:
 ```bash
 ctx help
 ctx doctor
+ctx update --check
 ```
+
+Native update flow:
+
+```bash
+ctx update
+```
+
+If CTX cannot confidently detect the install channel, it prints all supported update paths instead of guessing.
 
 Expected before initialization:
 
@@ -91,6 +105,9 @@ Expected files:
 opencode.json
 .opencode/commands/ctx.md
 .opencode/instructions/ctx-host-first.md
+.opencode/tui.json                         # full profile only
+.opencode/plugins/ctx-dashboard.tsx        # full profile only
+.opencode/package.json                     # full profile only
 ```
 
 Expected behavior:
@@ -98,8 +115,9 @@ Expected behavior:
 - `ctx init` creates the local runtime.
 - `ctx index` writes source, snippets, symbols, and graph links to `.ctx/graph.db`.
 - `ctx opencode install` registers CTX as a local MCP server and generates OpenCode command files.
+- `ctx opencode install` with the default `full` profile also provisions the live right-sidebar `CTX Dashboard`.
 - `ctx opencode install --profile core` keeps only the smallest daily slash-command surface.
-- rerunning `ctx opencode install --profile full` restores the full CTX command set.
+- rerunning `ctx opencode install --profile full` restores the complete CTX surface and sidebar.
 
 ## OpenCode-First Workflow
 
@@ -126,20 +144,36 @@ Useful first commands:
 
 ```text
 /ctx-doctor
-/ctx-index
 /ctx-memory-bootstrap
-/ctx-memory-search tests
-/ctx-retrieve auth refresh token
-/ctx-pack fix failing auth test
+/ctx-plan fix auth refresh regression
+/ctx-retrieve refresh token auth failure
+/ctx-read src/auth.ts outline
+/ctx-pack fix auth refresh regression
+/ctx-compare fix auth refresh regression
+/ctx-run npm run test:auth
+/ctx-gain
+/ctx-dashboard
 ```
 
-The generated OpenCode commands now prefer a more stable result-first format, for example:
+The generated OpenCode commands prefer a stable result-first format such as:
 
 - `## 🧭 CTX Plan`
 - `## 📖 CTX Read`
 - `## 🧪 CTX Run`
 - `## 📊 CTX Dashboard`
 - `## 💸 CTX Gain`
+
+With the `full` profile, OpenCode should also show a `CTX Dashboard` panel in the right sidebar. It auto-refreshes local runtime metrics such as:
+
+- total estimated tokens saved
+- average saved per run
+- reduction percentages
+- read-cache hit rate
+- index-cache reuse rate
+- top current win
+- latest pack artifact
+
+The sidebar is intentionally compact: it shows the live signal, while detailed activity and audit trails stay in the normal CTX command outputs.
 
 Expected `doctor` shape after `ctx init` + `ctx index`:
 
@@ -149,7 +183,7 @@ ready: true
 next: ctx memory bootstrap
 ```
 
-`ready: true` means CTX is operational. `next:` is then the recommended workflow step, not a blocker.
+`ready: true` means CTX is operational. `next:` is then a recommended workflow step, not a blocker.
 
 ## Graph Memory Workflow
 
@@ -186,32 +220,6 @@ imported_files=4 imported_directives=27
 - /repo/.github/copilot-instructions.md => 2 directives
 ```
 
-### Import One File Manually
-
-Inside OpenCode:
-
-```text
-/ctx-memory-import AGENTS.md project markdown agents
-```
-
-Equivalent CLI command:
-
-```bash
-ctx memory import --from AGENTS.md --scope project --source markdown --prefix agents
-```
-
-Expected JSON fields:
-
-```json
-{
-  "markdown_path": "AGENTS.md",
-  "scope": "project",
-  "source": "markdown",
-  "imported": 12,
-  "keys": ["agents.1", "agents.2"]
-}
-```
-
 ### Search Relevant Directives
 
 Inside OpenCode:
@@ -239,58 +247,23 @@ Why this saves tokens:
 - graph flow retrieves only the directives related to the current task
 - the included fixture currently shows `56.72%` fewer rule tokens for graph memory than the full markdown source while keeping `markdown=1.00` and `graph=1.00` query coverage
 
-### Add Or Update A Directive
-
-Inside OpenCode:
+### Add, Inspect, Or Export Directives
 
 ```text
 /ctx-memory-set testing.always_run Run targeted tests before completion.
-```
-
-Equivalent CLI command:
-
-```bash
-ctx memory set testing.always_run "Run targeted tests before completion." --scope project --source manual
-```
-
-Expected output:
-
-```text
-testing.always_run [project:manual]
-Run targeted tests before completion.
-```
-
-### Inspect Or Remove Directives
-
-```text
 /ctx-memory-list
 /ctx-memory-get testing.always_run
-/ctx-memory-delete testing.always_run
-```
-
-CLI equivalents:
-
-```bash
-ctx memory list --scope project --limit 20
-ctx memory get testing.always_run
-ctx memory delete testing.always_run
-```
-
-### Export For Compatibility
-
-Inside OpenCode:
-
-```text
 /ctx-memory-export AGENTS.generated.md project 200
 ```
 
-CLI equivalent:
+Equivalent CLI commands:
 
 ```bash
+ctx memory set testing.always_run "Run targeted tests before completion." --scope project --source manual
+ctx memory list --scope project --limit 20
+ctx memory get testing.always_run
 ctx memory export --to AGENTS.generated.md --scope project --limit 200
 ```
-
-Use this only when a markdown artifact is needed for auditing or compatibility.
 
 ## Context And Retrieval
 
@@ -308,14 +281,6 @@ CLI equivalent:
 ctx retrieve "refresh token auth failure" --limit 8
 ```
 
-Expected output shape:
-
-```text
-src/http/refresh-route.ts score=...
-src/auth/session.ts score=...
-tests/auth/refresh-route.test.ts score=...
-```
-
 ### Query The Graph
 
 Inside OpenCode:
@@ -330,21 +295,40 @@ CLI equivalent:
 ctx graph query auth
 ```
 
+### Read With Session Cache / Re-Read Compression
+
+Inside OpenCode:
+
+```text
+/ctx-read src/features/auth/session.ts outline
+/ctx-read src/features/auth/session.ts digest
+/ctx-read src/features/auth/session.ts digest
+```
+
+Expected behavior:
+
+- first `digest` reads and fingerprints the file
+- the second `digest` can return a cache hit when the file is unchanged
+- `outline` keeps the read structural instead of dumping the full body
+
 ### Build A Compact Pack
 
 Inside OpenCode:
 
 ```text
 /ctx-pack fix refresh token rotation
+/ctx-compare fix refresh token rotation
+/ctx-plan fix refresh token rotation
 ```
 
-CLI equivalent:
+CLI equivalents:
 
 ```bash
 ctx pack "fix refresh token rotation" --json
+ctx explain "fix refresh token rotation"
 ```
 
-Expected JSON fields:
+Expected pack JSON fields:
 
 ```json
 {
@@ -356,21 +340,14 @@ Expected JSON fields:
 }
 ```
 
-### Ask Without Invoking A Host Agent
-
-```bash
-ctx ask "where is retry logic implemented?"
-```
-
-This prints compact context directly. It is useful for debugging CTX itself, but daily usage should happen through OpenCode.
-
 ## Logs And Diffs
 
-### Prune Logs
+### Run And Compress Logs
 
 Inside OpenCode:
 
 ```text
+/ctx-run npm run test:auth
 /ctx-prune-logs npm run test:auth
 ```
 
@@ -382,11 +359,10 @@ npm run test:auth 2>&1 | ctx prune logs --max-lines 50
 
 Expected behavior:
 
-- repeated success/noise lines are removed
+- repeated noise is removed
 - failing assertions and stack frames are preserved
 - parser-specific diagnostics are kept when recognized
-- the fixture auth failure stays readable as `expected 'token:refresh:user-1' to contain 'rotated:user-1'`
-- if you only provide a topic instead of a runnable shell command, CTX should ask for the exact command instead of guessing
+- the raw log path stays available for deeper inspection
 
 ### Prune Diffs
 
@@ -402,13 +378,19 @@ CLI pipe equivalent:
 git diff | ctx prune diff --query "refresh token"
 ```
 
-Expected behavior:
-
-- relevant hunks are kept
-- unrelated hunks are collapsed
-- output remains explainable and task-focused
-
 ## Benchmarks
+
+### Local Runtime Checks
+
+Inside OpenCode:
+
+```text
+/ctx-gain
+/ctx-dashboard
+/ctx-stats
+```
+
+Use these to verify that the graph-memory and compact-pack workflow is actually saving tokens in the current repo.
 
 ### Single A/B Benchmark
 
@@ -423,14 +405,6 @@ CLI equivalent:
 ```bash
 ctx benchmark memory-ab "run auth tests and fix root cause" --markdown AGENTS.md --limit 20
 ```
-
-Expected metrics:
-
-- markdown tokens
-- graph memory tokens
-- token reduction percentage
-- query-term coverage
-- optional checklist-based success rate
 
 ### Suite Benchmark
 
@@ -449,18 +423,6 @@ ctx benchmark memory-suite \
   --json-out benchmarks/report.json
 ```
 
-Expected output:
-
-```text
-title: CTX Demo Memory Benchmark
-case_count: 1
-avg_token_reduction_pct: 56.72
-avg_query_coverage markdown=1.00 graph=1.00
-quality_wins markdown=0 graph=1 ties=0
-report_markdown_path: benchmarks/report.md
-json_output_path: benchmarks/report.json
-```
-
 ## MCP
 
 OpenCode uses CTX through local stdio MCP after `ctx opencode install`.
@@ -469,20 +431,6 @@ Inspect the generated config:
 
 ```bash
 ctx mcp config opencode
-```
-
-Expected shape:
-
-```json
-{
-  "mcp": {
-    "ctx": {
-      "type": "local",
-      "enabled": true,
-      "command": ["/absolute/path/to/ctx", "--repo-root", "/repo", "mcp", "stdio"]
-    }
-  }
-}
 ```
 
 Validate the OpenCode MCP handshake directly:
@@ -512,67 +460,29 @@ ctx mcp serve --port 8765
 
 ## Demo Fixture
 
-The in-repo validation fixture is:
+The main committed demo project is:
 
 ```text
 demo/fixtures/opencode-auth-lab
 ```
 
-Run the smoke flow:
+Useful scripts:
 
 ```bash
-cargo build --bin ctx
 scripts/demo/opencode-auth-lab-smoke.sh ./target/debug/ctx
 scripts/demo/opencode-auth-lab-mcp-smoke.sh ./target/debug/ctx
 scripts/demo/opencode-auth-lab-benchmark.sh ./target/debug/ctx
 ```
 
-Manual OpenCode flow:
-
-```bash
-ctx --repo-root demo/fixtures/opencode-auth-lab init
-ctx --repo-root demo/fixtures/opencode-auth-lab index
-ctx --repo-root demo/fixtures/opencode-auth-lab opencode install
-cd demo/fixtures/opencode-auth-lab
-npm install
-opencode
-```
-
-Then inside OpenCode:
-
-```text
-/ctx
-/ctx-memory-bootstrap
-/ctx-memory-search auth root cause
-/ctx-retrieve refresh token auth failure
-/ctx-prune-logs npm run test:auth
-/ctx-pack fix refresh token rotation
-/ctx-benchmark-memory-suite benchmarks/memory-suite.toml benchmarks/report.md benchmarks/report.json
-```
+The fixture is also linked from [docs/demo-walkthrough.md](docs/demo-walkthrough.md) and the recording flow in [docs/demo-script.md](docs/demo-script.md).
 
 ## Command Reference
 
-These are the commands most teams will use every day:
+The complete command reference lives in [docs/commands.md](docs/commands.md).
 
-| OpenCode command | CLI equivalent | What it does |
-|---|---|---|
-| `/ctx` | `ctx menu` | Opens the CTX command center |
-| `/ctx-doctor` | `ctx doctor` | Checks repo readiness and privacy defaults |
-| `/ctx-memory-bootstrap` | `ctx memory bootstrap` | Imports conventional rule files into graph memory |
-| `/ctx-memory-search <query>` | `ctx memory search <query>` | Finds relevant project directives |
-| `/ctx-plan <task>` | OpenCode-only | Builds a graph-backed low-token implementation plan |
-| `/ctx-retrieve <query>` | `ctx retrieve <query>` | Retrieves relevant code, symbols, snippets, and memory |
-| `/ctx-read <file> [mode]` | OpenCode-only | Reads one file with `full`, `outline`, or `digest` mode and session re-read compression |
-| `/ctx-pack <task>` | `ctx pack <task>` | Builds a compact task-specific context pack |
-| `/ctx-compare <task>` | OpenCode-only | Shows before-vs-CTX context density for one task |
-| `/ctx-dashboard` | OpenCode-only | Shows the local CTX dashboard snapshot for savings, cache ratios, latest activity, top wins, warnings, and audit activity |
-| `/ctx-gain` | `ctx stats --history 20` | Shows recent token savings, biggest wins, and repeated high-gain queries |
-| `/ctx-run <shell command>` | OpenCode-only | Runs a repo command, prunes the noisy output, and points to the raw log |
-| `/ctx-prune-logs <shell command>` | `<shell command> 2>&1 | ctx prune logs --max-lines 50` | Compacts noisy logs to the root cause |
-| `/ctx-stats` | `ctx stats` | Shows latest local usage and token-efficiency stats |
+Use it when you want:
 
-Repeated `ctx index` and `ctx reindex` runs are delta-aware: unchanged files are reused from the local cache, and the latest summary is written under `.ctx/cache/index-report.json`. Recent pack artifacts also carry that cache summary in their included metadata.
-
-For large CLI manuals or cheat sheets, use the OpenCode-only Toolbooks commands in [docs/commands.md](docs/commands.md) instead of putting the whole manual in `AGENTS.md`.
-
-For the complete command surface, syntax details, and examples, see [docs/commands.md](docs/commands.md).
+- exact CLI syntax
+- the matching OpenCode slash command
+- one example per command
+- the full OpenCode-only command list for `/ctx-plan`, `/ctx-compare`, `/ctx-read`, `/ctx-run`, `/ctx-gain`, `/ctx-dashboard`, Toolbooks, and `/ctx-learn`

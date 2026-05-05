@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Log and diff pruning utilities for CTX"
 
 [dependencies]
 regex.workspace = true

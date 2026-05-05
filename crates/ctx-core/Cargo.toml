@@ -5,18 +5,20 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Core indexing, packing, retrieval, and runtime orchestration for CTX"
 
 [dependencies]
 anyhow.workspace = true
-ctx-config = { path = "../ctx-config" }
-ctx-ast = { path = "../ctx-ast" }
-ctx-graph = { path = "../ctx-graph" }
-ctx-intake = { path = "../ctx-intake" }
-ctx-pack = { path = "../ctx-pack" }
-ctx-prune = { path = "../ctx-prune" }
-ctx-semantic = { path = "../ctx-semantic" }
-ctx-telemetry = { path = "../ctx-telemetry" }
-ctx-token = { path = "../ctx-token" }
+ctx-config.workspace = true
+ctx-ast.workspace = true
+ctx-graph.workspace = true
+ctx-intake.workspace = true
+ctx-pack.workspace = true
+ctx-prune.workspace = true
+ctx-semantic.workspace = true
+ctx-telemetry.workspace = true
+ctx-token.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true

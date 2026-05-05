@@ -61,114 +61,139 @@ pub fn render_dashboard(repo_root: &Path) -> Result<String> {
         .filter_map(|item| item.as_str().map(ToOwned::to_owned))
         .collect::<Vec<_>>();
 
-    let mut out = Vec::new();
-    out.push(format!(
-        "📊 CTX Dashboard | repo: {}",
-        value["repo"].as_str().unwrap_or("repo")
-    ));
+    let mut out = vec![
+        "## 📊 CTX Dashboard".to_string(),
+        format!("_repo: {}_", value["repo"].as_str().unwrap_or("repo")),
+        String::new(),
+        "**Savings**".to_string(),
+        markdown_table(
+            &["Metric", "Value"],
+            &[
+                vec![
+                    "Sampled runs".to_string(),
+                    savings["sampled_runs"].as_u64().unwrap_or(0).to_string(),
+                ],
+                vec![
+                    "Total saved".to_string(),
+                    format_tokens(savings["estimated_tokens_saved"].as_u64().unwrap_or(0)),
+                ],
+                vec![
+                    "Avg saved / run".to_string(),
+                    format_tokens(
+                        savings["average_tokens_saved_per_run"]
+                            .as_u64()
+                            .unwrap_or(0),
+                    ),
+                ],
+                vec![
+                    "Avg reduction".to_string(),
+                    format_pct(savings["average_reduction_pct"].as_f64()),
+                ],
+                vec![
+                    "Latest reduction".to_string(),
+                    format_pct(savings["latest_reduction_pct"].as_f64()),
+                ],
+                vec![
+                    "Max reduction".to_string(),
+                    format_pct(savings["max_reduction_pct"].as_f64()),
+                ],
+            ],
+        ),
+        String::new(),
+        "**Cache**".to_string(),
+        markdown_table(
+            &["Metric", "Value"],
+            &[
+                vec![
+                    "Read hit rate".to_string(),
+                    format_pct(read["hit_rate_pct"].as_f64()),
+                ],
+                vec![
+                    "Read cache hits".to_string(),
+                    read["cache_hits"].as_u64().unwrap_or(0).to_string(),
+                ],
+                vec![
+                    "Read cache misses".to_string(),
+                    read["cache_misses"].as_u64().unwrap_or(0).to_string(),
+                ],
+                vec![
+                    "Tracked files".to_string(),
+                    read["tracked_files"].as_u64().unwrap_or(0).to_string(),
+                ],
+                vec![
+                    "Index reuse".to_string(),
+                    format_pct(index["reuse_ratio_pct"].as_f64()),
+                ],
+                vec![
+                    "Indexed files".to_string(),
+                    index["indexed_files"].as_u64().unwrap_or(0).to_string(),
+                ],
+                vec![
+                    "Reused files".to_string(),
+                    index["reused_files"].as_u64().unwrap_or(0).to_string(),
+                ],
+            ],
+        ),
+        String::new(),
+        "**Latest Activity**".to_string(),
+    ];
 
-    out.push(String::new());
-    out.push("**Savings**".to_string());
-    out.push(format!(
-        "- sampled_runs: {}",
-        savings["sampled_runs"].as_u64().unwrap_or(0)
-    ));
-    out.push(format!(
-        "- estimated_tokens_saved: {}",
-        savings["estimated_tokens_saved"].as_u64().unwrap_or(0)
-    ));
-    out.push(format!(
-        "- savings_ratio_pct: {:.2}",
-        savings["savings_ratio_pct"].as_f64().unwrap_or(0.0)
-    ));
-    if let Some(latest) = savings["latest_reduction_pct"].as_f64() {
-        out.push(format!("- latest_reduction_pct: {:.2}", latest));
-    }
-    out.push(format!(
-        "- average_reduction_pct: {:.2}",
-        savings["average_reduction_pct"].as_f64().unwrap_or(0.0)
-    ));
-    out.push(format!(
-        "- max_reduction_pct: {:.2}",
-        savings["max_reduction_pct"].as_f64().unwrap_or(0.0)
-    ));
-    if let Some(pack_path) = savings["latest_pack_path"].as_str() {
-        if !pack_path.is_empty() {
-            out.push(format!("- latest_pack_path: {pack_path}"));
-        }
-    }
-
-    out.push(String::new());
-    out.push("**Cache**".to_string());
-    out.push(format!(
-        "- index: scanned={} indexed={} reused={} changed={} new={} reuse_ratio_pct={:.2}",
-        index["scanned_files"].as_u64().unwrap_or(0),
-        index["indexed_files"].as_u64().unwrap_or(0),
-        index["reused_files"].as_u64().unwrap_or(0),
-        index["changed_files"].as_u64().unwrap_or(0),
-        index["new_files"].as_u64().unwrap_or(0),
-        index["reuse_ratio_pct"].as_f64().unwrap_or(0.0),
-    ));
-    out.push(format!(
-        "- read: tracked_files={} cache_hits={} cache_misses={} hit_rate_pct={:.2}",
-        read["tracked_files"].as_u64().unwrap_or(0),
-        read["cache_hits"].as_u64().unwrap_or(0),
-        read["cache_misses"].as_u64().unwrap_or(0),
-        read["hit_rate_pct"].as_f64().unwrap_or(0.0),
-    ));
-
-    out.push(String::new());
-    out.push("**Latest Activity**".to_string());
     let mut has_latest_activity = false;
     if let Some(query) = latest_activity["latest_query"].as_str() {
         if !query.is_empty() {
             has_latest_activity = true;
-            out.push(format!("- latest_query: {query}"));
-        }
-    }
-    if let Some(pack_path) = latest_activity["latest_pack_path"].as_str() {
-        if !pack_path.is_empty() {
-            has_latest_activity = true;
-            out.push(format!("- latest_pack_path: {pack_path}"));
+            out.push(format!("- Query: `{query}`"));
         }
     }
     if let Some(command) = latest_activity["latest_command"].as_str() {
         if !command.is_empty() {
             has_latest_activity = true;
-            out.push(format!("- latest_command: {command}"));
+            out.push(format!("- Command: `{command}`"));
+        }
+    }
+    if let Some(pack_path) = latest_activity["latest_pack_path"].as_str() {
+        if !pack_path.is_empty() {
+            has_latest_activity = true;
+            out.push(format!("- Pack: `{pack_path}`"));
         }
     }
     if !has_latest_activity {
-        out.push("- nothing recorded yet".to_string());
+        out.push("- Nothing recorded yet.".to_string());
     }
 
     out.push(String::new());
-    out.push("**Top Wins**".to_string());
+    out.push("**Top Win**".to_string());
     if let Some(best_query) = top_wins["best_query"]["query"].as_str() {
+        out.push(format!("- Query: `{best_query}`"));
         out.push(format!(
-            "- best_query: {} runs={} avg_reduction_pct={:.2} estimated_tokens_saved={}",
-            best_query,
-            top_wins["best_query"]["runs"].as_u64().unwrap_or(0),
-            top_wins["best_query"]["average_reduction_pct"]
-                .as_f64()
-                .unwrap_or(0.0),
-            top_wins["best_query"]["estimated_tokens_saved"]
-                .as_u64()
-                .unwrap_or(0)
+            "- Runs: {}",
+            top_wins["best_query"]["runs"].as_u64().unwrap_or(0)
+        ));
+        out.push(format!(
+            "- Saved: {}",
+            format_tokens(
+                top_wins["best_query"]["estimated_tokens_saved"]
+                    .as_u64()
+                    .unwrap_or(0)
+            )
+        ));
+        out.push(format!(
+            "- Avg reduction: {}",
+            format_pct(top_wins["best_query"]["average_reduction_pct"].as_f64())
         ));
     } else {
-        out.push("- best_query: none yet".to_string());
+        out.push("- No query wins recorded yet.".to_string());
     }
     out.push(format!(
-        "- cache: index_reuse_ratio_pct={:.2} read_hit_rate_pct={:.2}",
-        top_wins["index_reuse_ratio_pct"].as_f64().unwrap_or(0.0),
-        top_wins["read_hit_rate_pct"].as_f64().unwrap_or(0.0),
+        "- Cache blend: read {} | index {}",
+        format_pct(top_wins["read_hit_rate_pct"].as_f64()),
+        format_pct(top_wins["index_reuse_ratio_pct"].as_f64()),
     ));
 
     out.push(String::new());
     out.push("**Warnings**".to_string());
     if warnings.is_empty() {
-        out.push("- none".to_string());
+        out.push("- None.".to_string());
     } else {
         out.extend(warnings.into_iter().map(|warning| format!("- ⚠ {warning}")));
     }
@@ -176,7 +201,7 @@ pub fn render_dashboard(repo_root: &Path) -> Result<String> {
     out.push(String::new());
     out.push("**Recent Audit**".to_string());
     if recent_audit.is_empty() {
-        out.push("- no audit events yet".to_string());
+        out.push("- No audit events yet.".to_string());
     } else {
         out.extend(recent_audit.into_iter().map(|line| format!("- {line}")));
     }
@@ -217,6 +242,11 @@ fn summarize_savings(gain: &Value) -> Value {
     json!({
         "sampled_runs": gain.get("sampled_runs").and_then(Value::as_u64).unwrap_or(0),
         "estimated_tokens_saved": estimated_tokens_saved,
+        "average_tokens_saved_per_run": if history_run_count(gain) == 0 {
+            0
+        } else {
+            estimated_tokens_saved / history_run_count(gain)
+        },
         "latest_reduction_pct": gain.get("latest_reduction_pct").cloned().unwrap_or(Value::Null),
         "average_reduction_pct": gain.get("average_reduction_pct").cloned().unwrap_or(Value::from(0.0)),
         "max_reduction_pct": gain.get("max_reduction_pct").cloned().unwrap_or(Value::from(0.0)),
@@ -226,6 +256,12 @@ fn summarize_savings(gain: &Value) -> Value {
         "latest_pack_path": gain.get("latest_pack_path").cloned().unwrap_or(Value::Null),
         "top_queries": gain.get("top_queries").cloned().unwrap_or_else(|| json!([]))
     })
+}
+
+fn history_run_count(gain: &Value) -> u64 {
+    gain.get("sampled_runs")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
 }
 
 fn summarize_index_cache(index_cache: Option<&Value>) -> Value {
@@ -421,4 +457,29 @@ fn extract_audit_field(line: &str, field: &str) -> Option<String> {
     let rest = &line[start + needle.len()..];
     let end = rest.find('"')?;
     Some(rest[..end].replace("\\\"", "\""))
+}
+
+fn format_tokens(value: u64) -> String {
+    format!("{value} tokens")
+}
+
+fn format_pct(value: Option<f64>) -> String {
+    format!("{:.2}%", value.unwrap_or(0.0))
+}
+
+fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
+    let mut out = Vec::new();
+    out.push(format!("| {} |", headers.join(" | ")));
+    out.push(format!(
+        "| {} |",
+        headers
+            .iter()
+            .map(|_| "---")
+            .collect::<Vec<_>>()
+            .join(" | ")
+    ));
+    for row in rows {
+        out.push(format!("| {} |", row.join(" | ")));
+    }
+    out.join("\n")
 }

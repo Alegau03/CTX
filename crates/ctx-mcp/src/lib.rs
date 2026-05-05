@@ -402,7 +402,7 @@ fn process_rpc(cfg: &McpServerConfig, method: &str, params: Option<&Value>) -> R
     match method {
         "initialize" => Ok(json!({
             "protocolVersion": initialize_protocol_version(params),
-            "serverInfo":{"name":"ctx-mcp","version":"0.1.0"},
+            "serverInfo":{"name":"ctx-mcp","version":env!("CARGO_PKG_VERSION")},
             "capabilities":{
                 "tools":{"listChanged":false},
                 "resources":{"subscribe":false,"listChanged":false}

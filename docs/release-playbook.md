@@ -67,13 +67,42 @@ Inside OpenCode:
 ## Install Snippet
 
 ```bash
-shasum -a 256 -c SHA256SUMS
-tar -xzf ctx-<version>-<target>.tar.gz
-sudo install -m 0755 ctx-<version>-<target>/ctx /usr/local/bin/ctx
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
 ctx doctor
 ```
 
-If only the macOS Apple Silicon archive is published, point other users to source install until matching release archives are available.
+Alternative channels:
+
+```bash
+cargo install ctx
+npm i -g ctx-bin
+brew tap Alegau03/ctx
+brew install ctx
+ctx doctor
+```
+
+## Update Snippet
+
+Preferred native check:
+
+```bash
+ctx update --check
+```
+
+Native update surface:
+
+```bash
+ctx update
+```
+
+Channel-specific fallbacks:
+
+```bash
+cargo install ctx --force
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
+npm update -g ctx-bin
+brew upgrade ctx
+```
 
 ## Verification
 
@@ -99,3 +128,4 @@ scripts/release/final-qa.sh
 - published artifacts match the platforms promised in README and release notes
 - package verification passes after unpacking
 - Homebrew formula coordinates are updated before tap publication
+- installer marker is present after `scripts/install.sh` install smoke

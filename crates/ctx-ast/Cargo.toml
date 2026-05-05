@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Syntax and symbol extraction for CTX source indexing"
 
 [dependencies]
 regex.workspace = true

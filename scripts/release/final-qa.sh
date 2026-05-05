@@ -23,11 +23,37 @@ scripts/demo/opencode-auth-lab-smoke.sh "$DEBUG_CTX"
 scripts/demo/opencode-auth-lab-mcp-smoke.sh "$DEBUG_CTX"
 scripts/demo/opencode-auth-lab-benchmark.sh "$DEBUG_CTX"
 CTX_RELEASE_RUN_TESTS=0 CARGO_BIN="$CARGO_BIN" scripts/release/build.sh
-ARCHIVE_PATH="$(find dist -maxdepth 1 -name 'ctx-*.tar.gz' | sort | tail -n 1)"
-if [[ -z "$ARCHIVE_PATH" ]]; then
-  echo "release archive not found in dist/" >&2
+MANIFEST_PATH="dist/release-manifest.json"
+if [[ ! -f "$MANIFEST_PATH" ]]; then
+  echo "release manifest not found: $MANIFEST_PATH" >&2
   exit 1
 fi
-scripts/release/verify-artifact.sh "$ARCHIVE_PATH" dist/SHA256SUMS
 
-echo "CTX final QA passed: $ARCHIVE_PATH"
+ARCHIVE_PATHS=()
+while IFS= read -r archive_path; do
+  [[ -n "$archive_path" ]] && ARCHIVE_PATHS+=("$archive_path")
+done < <(
+  python3 - "$MANIFEST_PATH" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest = pathlib.Path(sys.argv[1])
+data = json.loads(manifest.read_text())
+for item in data.get("artifacts", []):
+    archive = item.get("archive")
+    if archive:
+        print(manifest.parent / archive)
+PY
+)
+
+if [[ "${#ARCHIVE_PATHS[@]}" -eq 0 ]]; then
+  echo "no release archives listed in $MANIFEST_PATH" >&2
+  exit 1
+fi
+
+for archive_path in "${ARCHIVE_PATHS[@]}"; do
+  scripts/release/verify-artifact.sh "$archive_path" dist/SHA256SUMS
+done
+
+echo "CTX final QA passed: ${ARCHIVE_PATHS[*]}"

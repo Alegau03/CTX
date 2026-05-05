@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Prompt hook helpers for CTX host integrations"
 
 [dependencies]
 serde.workspace = true

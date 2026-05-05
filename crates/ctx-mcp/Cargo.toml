@@ -5,10 +5,12 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Local MCP server implementation for CTX"
 
 [dependencies]
 anyhow.workspace = true
-ctx-core = { path = "../ctx-core" }
+ctx-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tiny_http = "0.12"
@@ -17,5 +19,5 @@ rusqlite.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
-ctx-config = { path = "../ctx-config" }
+ctx-config.workspace = true
 tempfile.workspace = true

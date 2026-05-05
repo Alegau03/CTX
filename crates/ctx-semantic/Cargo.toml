@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Semantic ranking helpers for CTX retrieval"
 
 [features]
 default = []

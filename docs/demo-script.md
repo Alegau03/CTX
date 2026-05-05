@@ -9,6 +9,7 @@ Show CTX from install to real usage:
 - install `ctx`
 - enable CTX inside a project
 - open OpenCode
+- show the live right-sidebar `CTX Dashboard`
 - use `/ctx-*` commands instead of dumping large markdown files or noisy logs into the prompt
 
 ## Recording Flow
@@ -28,7 +29,7 @@ ctx doctor
 cd /path/to/demo-project
 ctx init
 ctx index
-ctx opencode install
+ctx opencode install --profile full
 opencode
 ```
 
@@ -58,6 +59,11 @@ Run:
 /ctx-prune-logs npm run test:auth
 /ctx-stats
 ```
+
+Sidebar shots to capture during the demo:
+
+- the right-sidebar `CTX Dashboard` immediately after `ctx opencode install --profile full`
+- the same sidebar after `/ctx-read`, `/ctx-pack`, and `/ctx-run` so savings and cache numbers visibly change
 
 Optional Toolbooks segment:
 

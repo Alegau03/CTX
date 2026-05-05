@@ -15,9 +15,11 @@ use ctx_hooks::apply_pre_prompt_hook;
 use ctx_mcp::{McpServerConfig, serve_http, serve_stdio};
 mod dashboard;
 mod host_integration;
+mod update;
 
 use dashboard::{build_dashboard_value, render_dashboard};
 use host_integration::{OpencodeInstallProfile, install_opencode_integration, render_mcp_config};
+use update::{UpdateArgs, run_update};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -93,6 +95,7 @@ enum Commands {
         command: BenchmarkCommands,
     },
     Stats(StatsArgs),
+    Update(UpdateArgs),
     Doctor,
     Menu,
     Help,
@@ -685,6 +688,9 @@ fn run() -> Result<()> {
                 }
             }
         }
+        Commands::Update(args) => {
+            run_update(&args)?;
+        }
         Commands::Doctor => {
             println!("{}", render_doctor_report(&repo_root));
         }
@@ -774,6 +780,19 @@ fn print_host_install_report(report: serde_json::Value, as_json: bool) -> Result
     }
     if let Some(commands_written) = report["commands_written"].as_u64() {
         println!("commands_written: {commands_written}");
+    }
+    if let Some(sidebar_enabled) = report["sidebar"]["enabled"].as_bool() {
+        println!(
+            "sidebar_dashboard: {}",
+            if sidebar_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+    if let Some(plugin_path) = report["sidebar"]["plugin_path"].as_str() {
+        println!("sidebar_plugin_path: {plugin_path}");
     }
     if let Some(skills_dir) = report["skills_dir"].as_str() {
         println!("skills_dir: {skills_dir}");
@@ -1064,7 +1083,12 @@ What it does: Prints latest local telemetry snapshot, or an aggregate gain repor
 Example: ctx stats
 Example: ctx stats --history 20
 
-29) ctx doctor
+29) ctx update [--check] [--yes] [--channel installer|cargo|npm|brew]
+What it does: Checks the latest CTX version, detects how CTX was installed when possible, and prints the safest update path for that install channel.
+Example: ctx update --check
+Example: ctx update --channel cargo
+
+30) ctx doctor
 What it does: Checks first-run/install readiness: config, graph, local stats, audit log, and privacy defaults.
 Example: ctx doctor
 

@@ -11,6 +11,9 @@ Make CTX live inside OpenCode so the user can keep using OpenCode normally while
 - `opencode.json`
 - `.opencode/commands/*.md`
 - `.opencode/instructions/ctx-host-first.md`
+- `.opencode/tui.json` when the `full` profile is installed
+- `.opencode/plugins/ctx-dashboard.tsx` when the `full` profile is installed
+- `.opencode/package.json` when the `full` profile is installed
 
 The generated config registers CTX as a local MCP server launched with:
 
@@ -21,10 +24,11 @@ The generated config registers CTX as a local MCP server launched with:
 The generated commands expose the current CTX feature surface as `/ctx-*` commands inside OpenCode.
 The installer supports two profiles:
 
-- `full` (default): complete CTX command surface
+- `full` (default): complete CTX command surface plus a live `CTX Dashboard` panel in the OpenCode right sidebar
 - `core`: lean daily workflow with only the smallest OpenCode slash-command set
 
 The generated `/ctx` command center and `ctx-host-first.md` instructions reflect the installed profile.
+The `full` profile also provisions a TUI sidebar plugin that refreshes CTX savings, cache, top-win, and artifact metrics directly in the OpenCode right rail.
 The bootstrap and graph-memory flow still support compatibility seed files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md`.
 The generated command files prefer deterministic CTX-owned execution: they call the absolute `ctx` binary with `--repo-root`, lean on `--json` where it reduces host chatter, and ask OpenCode only for a narrow result-first explanation of the command output.
 
@@ -46,6 +50,8 @@ ctx opencode install --profile core
 opencode
 ```
 
+If you install the default `full` profile instead, OpenCode should also show the live `CTX Dashboard` in the right sidebar after the repo reloads.
+
 Inside OpenCode:
 
 ```text
@@ -65,7 +71,8 @@ The OpenCode integration covers:
 - memory: `/ctx-memory-bootstrap`, `/ctx-memory-import`, `/ctx-memory-search`, `/ctx-memory-list`, `/ctx-memory-get`, `/ctx-memory-set`, `/ctx-memory-delete`, `/ctx-memory-export`
 - benchmarks: `/ctx-dashboard`, `/ctx-gain`, `/ctx-benchmark-memory-ab`, `/ctx-benchmark-memory-suite`, `/ctx-stats`
 
-`/ctx-dashboard` is meant to be the quick local control panel: it now highlights savings, cache ratios, latest activity, top wins, warnings, and recent audit lines in one result-first snapshot.
+`/ctx-dashboard` is meant to be the quick local control panel: it highlights savings, cache ratios, top wins, and audit-backed runtime telemetry in one result-first snapshot.
+- the `full` profile right-sidebar panel shows the same runtime story live without spending another chat turn, but keeps the layout intentionally tighter than the in-thread command output
 - MCP/bootstrap: `/ctx-mcp-stdio`, `/ctx-mcp-serve`, `/ctx-mcp-config-opencode`, `/ctx-opencode-install`
 
 The core profile keeps only:
@@ -79,6 +86,8 @@ The core profile keeps only:
 - `/ctx-prune-logs <shell command>`
 - `/ctx-stats`
 - `/ctx-gain`
+
+The core profile intentionally does not install the right-sidebar dashboard plugin.
 
 ## Design Constraints
 

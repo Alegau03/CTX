@@ -1,68 +1,123 @@
-# CTX
+<div align="center">
 
-**OpenCode-first graph memory and local context runtime for coding agents.**
+<h1>CTX</h1>
 
-CTX helps OpenCode work with less prompt noise by turning project rules, code structure, logs, diffs, and task context into a local queryable runtime. Instead of rereading giant markdown instruction files or dumping broad file trees into every prompt, CTX lets the host retrieve the smallest useful slice for the current task.
+<h3>The context layer for AI coding agents</h3>
 
-> Status: CTX is OpenCode-first. The supported daily workflow is to install `ctx`, bootstrap a repo with `ctx opencode install`, then use `/ctx-*` commands from inside OpenCode.
+<p><strong>Reduce token waste in OpenCode and AI coding workflows with graph memory, compact task packs, read-cache compression, command pruning, and a live right-sidebar dashboard.</strong></p>
+
+<p>OpenCode-first runtime · Local MCP tools · Read cache + delta-aware indexing · Single Rust binary</p>
+
+<p>
+  <img src="https://img.shields.io/badge/CI-ready-22c55e?style=flat-square" alt="CI ready" />
+  <img src="https://img.shields.io/badge/local--first-yes-0f172a?style=flat-square" alt="Local first" />
+  <img src="https://img.shields.io/badge/telemetry-local-2563eb?style=flat-square" alt="Telemetry local" />
+  <img src="https://img.shields.io/badge/license-MIT-f43f5e?style=flat-square" alt="MIT license" />
+</p>
+
+<p>
+  <a href="#install-ctx">Install</a> ·
+  <a href="#opencode-first-usage">OpenCode Usage</a> ·
+  <a href="#ctx-dashboard">Dashboard</a> ·
+  <a href="#proof-from-the-demo-fixture">Benchmarks</a> ·
+  <a href="#documentation">Docs</a> ·
+  <a href="#security">Security</a>
+</p>
+
+</div>
+
+> CTX is a local context runtime for OpenCode and AI coding agents. It keeps repository knowledge, reusable rules, shell output, diffs, and file rereads compact before they ever bloat the model context.
+
+## See It In Action
+
+| Install + Bootstrap | Planning + Packing | Read Cache + Dashboard |
+|---|---|---|
+| `GIF placeholder` | `GIF placeholder` | `GIF placeholder` |
+| Install `ctx`, run `ctx init`, `ctx index`, `ctx opencode install`, then open OpenCode. | Build a plan, pack the smallest useful context, and compare broad vs packed token cost. | Re-read files through `digest` mode and watch live savings in the right sidebar. |
 
 ## Contents
 
 - [What CTX Is](#what-ctx-is)
+- [Why It Exists](#why-it-exists)
 - [Install CTX](#install-ctx)
 - [OpenCode-First Usage](#opencode-first-usage)
-- [Proof From The Demo Fixture](#proof-from-the-demo-fixture)
 - [What Works Today](#what-works-today)
-- [How It Works](#how-it-works)
-- [Video Demo](#demo-and-screenshots)
+- [Graph Memory](#graph-memory)
+- [CTX Dashboard](#ctx-dashboard)
+- [Proof From The Demo Fixture](#proof-from-the-demo-fixture)
+- [Demo And Screenshots](#demo-and-screenshots)
 - [Security](#security)
 - [Documentation](#documentation)
 - [Repository Layout](#repository-layout)
 
 ## What CTX Is
 
-CTX is a local runtime layer for OpenCode. It indexes the repository, stores reusable project guidance as graph memory, exposes MCP tools, and generates OpenCode commands so the selected OpenCode model can retrieve compact context on demand.
+CTX is a local runtime layer for OpenCode. It indexes the repository, stores reusable guidance as graph memory, exposes local MCP tools, generates OpenCode slash commands, and keeps local telemetry about token savings, cache reuse, and compact context packs.
+
+CTX is **not** another agent launcher.
+
+- OpenCode keeps the selected model, provider, and normal workflow.
+- CTX sits underneath as the context layer.
+- The product surface is the OpenCode-native `/ctx-*` experience, not wrapper-first shell workflows.
 
 ## Why It Exists
 
-Modern coding agents waste context on things that are useful once but expensive forever:
+Coding agents usually waste tokens on things that are useful once but expensive forever.
 
 | Problem | Traditional flow | CTX flow |
 |---|---|---|
-| Project rules | Reread a full `AGENTS.md` repeatedly | Import rules into graph memory and retrieve only relevant directives |
-| Noisy logs | Paste thousands of repeated lines | Prune logs into root-cause signal |
-| Broad diffs | Feed entire patches | Keep task-relevant hunks and changed symbols |
-| Code search | Manual file spelunking | Query local graph, snippets, symbols, and semantic ranking |
-| Agent integration | Wrapper commands outside the host | OpenCode-native `/ctx-*` commands and local MCP tools |
-
-CTX is not another agent launcher. OpenCode keeps the selected model, provider, plugins, and normal workflow. CTX sits underneath as a local context layer.
+| Project rules | Reload a full `AGENTS.md` every turn | Import rules into graph memory and retrieve only the relevant directives |
+| File rereads | Pay full price for the same file again | Re-read unchanged files through `digest` / `outline` modes with local read-cache compression |
+| Noisy logs | Paste thousands of repeated lines | Run `/ctx-run` or prune logs into root-cause signal |
+| Broad diffs | Feed huge patches | Keep only task-relevant hunks and changed symbols |
+| Repo navigation | Manual file spelunking | Query local graph, snippets, symbols, and semantic ranking |
+| Host integration | Wrapper commands outside the agent | OpenCode-native `/ctx-*` commands plus local MCP tools |
 
 ## Install CTX
 
-Current install support:
+Install CTX with the channel that fits your workflow best:
 
-- macOS Apple Silicon: prebuilt GitHub Release archive
-- macOS Intel, Linux, Windows: source install for now
+- `cargo install ctx`
+- one-line installer script
+- GitHub Release archives
+- `npm i -g ctx-bin`
+- `brew tap Alegau03/ctx && brew install ctx`
 
-### Fastest Path: macOS Apple Silicon
+Update paths:
 
-Download the latest assets from [GitHub Releases](https://github.com/Alegau03/CTX/releases), then run:
+- `ctx update`
+- `ctx update --check`
+- `cargo install ctx --force`
+- rerun the installer script
+- `npm update -g ctx-bin`
+- `brew upgrade ctx`
+
+### Cargo
 
 ```bash
-shasum -a 256 -c SHA256SUMS
-tar -xzf ctx-0.1.0-aarch64-apple-darwin.tar.gz
-mkdir -p "$HOME/.local/bin"
-install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
-export PATH="$HOME/.local/bin:$PATH"
+cargo install ctx
 ```
 
-If you prefer a system-wide install, replace the last two lines with:
+### One-Line Installer
 
 ```bash
-sudo install -m 0755 ctx-0.1.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
 ```
 
-### Other Platforms: Source Install
+### npm
+
+```bash
+npm i -g ctx-bin
+```
+
+### Homebrew
+
+```bash
+brew tap Alegau03/ctx
+brew install ctx
+```
+
+### Source Install
 
 ```bash
 git clone https://github.com/Alegau03/CTX.git
@@ -75,13 +130,46 @@ Verify:
 ```bash
 ctx help
 ctx doctor
+ctx update --check
 ```
 
-For more install details, including release verification notes, see [docs/install.md](docs/install.md).
+Native update command:
+
+```bash
+ctx update
+```
+
+How `ctx update` behaves:
+
+- installer-based installs: reruns the official installer path
+- Cargo installs: prints `cargo install ctx --force`
+- npm installs: prints `npm update -g ctx-bin`
+- Homebrew installs: prints `brew upgrade ctx`
+- ambiguous installs: prints all supported update commands without guessing
+
+### GitHub Release Archive
+
+Download the latest assets from [GitHub Releases](https://github.com/Alegau03/CTX/releases), then run:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+tar -xzf ctx-0.2.0-aarch64-apple-darwin.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 0755 ctx-0.2.0-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+If you prefer a system-wide install:
+
+```bash
+sudo install -m 0755 ctx-0.2.0-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+```
+
+For the full install matrix, release verification notes, native update behavior, and distribution details, see [docs/install.md](docs/install.md).
 
 ## OpenCode-First Usage
 
-Once `ctx` is installed, move into any project and enable CTX:
+Once `ctx` is installed, enable it in any project:
 
 ```bash
 cd /path/to/your/project
@@ -91,16 +179,16 @@ ctx opencode install
 opencode
 ```
 
-If you want the smallest possible OpenCode surface first, install the lean profile instead:
+If you want the leanest possible OpenCode surface first:
 
 ```bash
 ctx opencode install --profile core
 ```
 
-Profile notes:
+Profile summary:
 
-- `full` (default): full CTX slash-command surface, including memory, toolbooks, dashboard, and benchmark helpers
-- `core`: only the daily essentials like `/ctx-doctor`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-run`, `/ctx-prune-logs`, `/ctx-stats`, and `/ctx-gain`
+- `full` (default): full CTX slash-command surface plus the live right-sidebar `CTX Dashboard`
+- `core`: lean daily workflow with `/ctx`, `/ctx-doctor`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-pack`, `/ctx-run`, `/ctx-prune-logs`, `/ctx-stats`, and `/ctx-gain`
 
 Inside OpenCode, start with:
 
@@ -108,9 +196,90 @@ Inside OpenCode, start with:
 /ctx
 ```
 
-Then use the command center to run `/ctx-doctor`, `/ctx-memory-bootstrap`, `/ctx-memory-search`, `/ctx-plan`, `/ctx-retrieve`, `/ctx-read <file> [mode]`, `/ctx-pack`, `/ctx-compare`, `/ctx-dashboard`, `/ctx-gain`, `/ctx-run <shell command>`, `/ctx-prune-logs <shell command>`, Toolbooks, `/ctx-learn`, and benchmark commands without leaving OpenCode.
+From there, the main workflow is:
 
-For full usage, examples, and expected output, see [guide.md](guide.md).
+```text
+/ctx-doctor
+/ctx-memory-bootstrap
+/ctx-plan <task>
+/ctx-retrieve <query>
+/ctx-read <file> [mode]
+/ctx-pack <task>
+/ctx-compare <task>
+/ctx-run <shell command>
+/ctx-gain
+/ctx-dashboard
+```
+
+Toolbooks and reusable lessons are also first-class:
+
+```text
+/ctx-toolbook-import <name> <file>
+/ctx-toolbook-search <name> "<query>"
+/ctx-toolbook-pack <name> "<task>"
+/ctx-learn <key> "<body>"
+```
+
+For full usage, expected outputs, and CLI equivalents, see [guide.md](guide.md) and [docs/commands.md](docs/commands.md).
+
+## What Works Today
+
+| Area | Current state |
+|---|---|
+| OpenCode integration | `ctx opencode install` writes `opencode.json`, `.opencode/commands/*.md`, `.opencode/instructions/ctx-host-first.md`, and in `full` profile also provisions `.opencode/tui.json` plus a live sidebar plugin |
+| Install profiles | `ctx opencode install --profile full|core` lets you choose between the full CTX surface and a lean daily workflow |
+| Command center | `/ctx` shows a categorized CTX menu and best next command |
+| Planning | `/ctx-plan <task>` combines retrieval, graph, memory, and pack signals into an implementation plan |
+| Context packing | `/ctx-pack <task>` builds compact task packs with graph, memory, failure, diff, and attachment signals |
+| Density check | `/ctx-compare <task>` shows before-vs-CTX token density for one task |
+| Read cache | `/ctx-read <file> [mode]` supports `full`, `outline`, and `digest` with session re-read compression |
+| Delta-aware indexing | repeated `ctx index` runs reuse unchanged files and write index-cache summaries |
+| Command compression | `/ctx-run <shell command>` keeps the root cause and stores the raw log |
+| Gain reporting | `/ctx-gain` summarizes recent token savings and top repeated queries |
+| Dashboard | the `full` profile adds a live right-sidebar `CTX Dashboard`, while `/ctx-dashboard` prints a local snapshot in-thread |
+| Graph memory | bootstrap/import/search/list/get/set/delete/export project directives seeded from `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions |
+| Toolbooks | OpenCode-only `/ctx-toolbook-*` commands keep large CLI manuals out of `AGENTS.md` |
+| Learning | `/ctx-learn <key> "<body>"` stores reusable project lessons in graph memory |
+| Retrieval | hybrid graph, snippets, FTS, symbols, and semantic ranking with local fallback |
+| Pruning | deterministic log and diff pruning with parser-aware diagnostics |
+| MCP | local stdio MCP plus localhost HTTP JSON-RPC runtime |
+| File coverage | Rust, Python, TypeScript, JavaScript, Markdown runbooks, and common config/script files |
+| Privacy | local-only defaults, sensitive attachment blocking, local audit log |
+
+## Graph Memory
+
+Graph Memory is CTX's structured replacement for repeatedly loading whole instruction markdown files. It keeps directives local, queryable, editable, and exportable when markdown compatibility is still needed.
+
+Instead of this:
+
+- one giant `AGENTS.md`
+- every host turn re-reading it
+- unclear relevance to the active task
+
+CTX lets you do this:
+
+- import rules once with `/ctx-memory-bootstrap`
+- retrieve only task-relevant directives with `/ctx-memory-search`
+- fold those directives into `/ctx-plan` and `/ctx-pack`
+- store new lessons with `/ctx-learn`
+
+## CTX Dashboard
+
+When CTX is installed with the default `full` profile, OpenCode gets a live `CTX Dashboard` in the right sidebar.
+
+The sidebar is meant to be a lightweight control tower for the current repo, not another verbose chat response. It auto-refreshes local runtime metrics such as:
+
+- total estimated tokens saved
+- average tokens saved per run
+- average and latest reduction percentages
+- read-cache hit rate
+- index-cache reuse rate
+- top current win
+- latest pack artifact
+
+The right-sidebar view is intentionally compact. It focuses on the live metrics that matter most instead of repeating verbose activity logs or warning blocks that are already available in the main CTX outputs.
+
+Use the `core` profile when you want the smallest possible slash-command surface and do not need the sidebar yet.
 
 ## Proof From The Demo Fixture
 
@@ -138,68 +307,21 @@ Evidence files:
 - [benchmark JSON](demo/fixtures/opencode-auth-lab/benchmarks/report.json)
 - [demo walkthrough](docs/demo-walkthrough.md)
 
-The core claim is backed by the included fixture, plus a committed public-repository snapshot.
+External validation is also committed in [docs/external-benchmark-agentsmd.md](docs/external-benchmark-agentsmd.md), including a public-repo snapshot with:
 
-External validation completed:
-
-- bootstrap, indexing, OpenCode asset generation, MCP handshake, and basic retrieval/pack flow were verified on the public `charmbracelet/glow` repository
-- a committed external benchmark snapshot now exists for [agentsmd/agents.md](docs/external-benchmark-agentsmd.md), with:
-  - token reduction `72.62%`
-  - query coverage `markdown=1.00`, `graph=0.89`
-  - success rate `markdown=0.50`, `graph=1.00`
-  - quality wins `markdown=0`, `graph=1`, `ties=0`
-
-## What Works Today
-
-| Area | Current state |
-|---|---|
-| OpenCode integration | `ctx opencode install` writes `opencode.json`, `.opencode/commands/*.md`, and `.opencode/instructions/ctx-host-first.md` |
-| Install profiles | `ctx opencode install --profile full|core` lets you choose between the full CTX surface and a lean daily workflow |
-| Command menu | `/ctx` opens a categorized CTX command center inside OpenCode |
-| Output polish | Key OpenCode commands now render stable markdown blocks such as `## 🧭 CTX Plan`, `## 📊 CTX Dashboard`, and `## 🧪 CTX Run` |
-| Graph memory | Bootstrap/import/search/list/get/set/delete/export project directives, including compatibility seeds from `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and Copilot instructions |
-| Planning | `/ctx-plan <task>` combines graph, memory, retrieval, and token-reduced pack signals into an implementation plan |
-| Read cache | `/ctx-read <file> [mode]` supports `full`, `outline`, and `digest` reads with session re-read compression for unchanged files |
-| Delta-aware indexing | Repeated `ctx index` runs reuse unchanged files, write local cache reports, and avoid reprocessing identical content |
-| Context packing | Builds compact task packs with graph, memory, diff, failure, and attachment signals |
-| Context comparison | `/ctx-compare <task>` shows before-vs-CTX token density for one task pack |
-| Dashboard | `/ctx-dashboard` shows savings, cache ratios, latest activity, top wins, warnings, and recent audit activity in one local snapshot |
-| Gain reporting | `/ctx-gain` shows recent token savings, biggest wins, and top repeated queries from local stats history |
-| Command compression | `/ctx-run <shell command>` runs a local repo command, prunes the noisy output, and keeps the root cause plus raw-log path |
-| Toolbooks | OpenCode-only `/ctx-toolbook-*` commands store and search large CLI manuals without putting them in `AGENTS.md` |
-| Learning | `/ctx-learn <key> "<body>"` stores reusable project lessons in graph memory |
-| Retrieval | Hybrid graph, FTS, snippets, symbols, and semantic ranking with local fallback |
-| Pruning | Deterministic log and diff pruning with parser-aware diagnostics |
-| MCP | Local stdio MCP plus localhost HTTP JSON-RPC runtime |
-| Analysis | Rust, Python, TypeScript, JavaScript, Markdown runbooks, and common config/script files with symbol and dependency enrichment |
-| Benchmarks | Markdown-vs-graph memory A/B suite with Markdown and JSON reports |
-| Privacy | Local-only defaults, sensitive attachment blocking, and local audit logs |
-
-## How It Works
-
-```mermaid
-flowchart LR
-    A["OpenCode session"] --> B["/ctx-* commands"]
-    A --> C["CTX MCP stdio tools"]
-    B --> D["ctx runtime"]
-    C --> D
-    D --> E["SQLite graph + FTS"]
-    D --> F["Graph memory directives"]
-    D --> G["Prune + pack pipeline"]
-    D --> H["Local stats + audit"]
-    F --> I["Small task-specific context"]
-    G --> I
-    E --> I
-    I --> A
-```
-
-Core idea: markdown project rules can still exist as seed material, but CTX imports them into graph memory so OpenCode can retrieve only the directives related to the current task.
-
-## Graph Memory
-
-Graph Memory is CTX's structured replacement for repeatedly loading full project-instruction markdown files. It keeps directives local, queryable, editable, and exportable when compatibility requires markdown again.
+- token reduction `72.62%`
+- query coverage `markdown=1.00`, `graph=0.89`
+- success rate `markdown=0.50`, `graph=1.00`
+- quality wins `markdown=0`, `graph=1`, `ties=0`
 
 ## Demo And Screenshots
+
+| Media Slot | Suggested Asset |
+|---|---|
+| Hero GIF | full install -> `ctx init` -> `ctx index` -> `ctx opencode install` -> `/ctx` |
+| Sidebar GIF | live right-sidebar `CTX Dashboard` refreshing after `/ctx-pack` and `/ctx-read` |
+| Command GIF | `/ctx-plan`, `/ctx-pack`, `/ctx-compare`, `/ctx-run` |
+| Static Screenshot | `CTX Dashboard` in OpenCode right sidebar |
 
 | Asset | Status |
 |---|---|
@@ -207,12 +329,9 @@ Graph Memory is CTX's structured replacement for repeatedly loading full project
 | Automated smoke | `scripts/demo/opencode-auth-lab-smoke.sh` |
 | MCP smoke | `scripts/demo/opencode-auth-lab-mcp-smoke.sh` |
 | Benchmark smoke | `scripts/demo/opencode-auth-lab-benchmark.sh` |
+| Demo walkthrough | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) |
+| Recording script | [docs/demo-script.md](docs/demo-script.md) |
 | Demo video | [Watch the OpenCode demo video](https://youtu.be/gFwGb7sCzKI) |
-
-Demo Video on OpenCode on a example project:
-
-- [Watch the demo on YouTube](https://youtu.be/gFwGb7sCzKI)
-
 
 ## Security
 
@@ -230,12 +349,12 @@ See [docs/security.md](docs/security.md).
 
 | File | Purpose |
 |---|---|
-| [guide.md](guide.md) | Full OpenCode usage guide, command reference, examples, expected outputs |
+| [guide.md](guide.md) | Operational OpenCode workflow, examples, expected outputs |
 | [docs/commands.md](docs/commands.md) | Complete CTX command syntax and explanations |
 | [docs/install.md](docs/install.md) | Install paths, PATH notes, release archive verification |
+| [docs/opencode-integration.md](docs/opencode-integration.md) | OpenCode integration architecture and install profiles |
+| [docs/demo-script.md](docs/demo-script.md) | Recording sequence for demos and walkthroughs |
 | [docs/demo-walkthrough.md](docs/demo-walkthrough.md) | End-to-end fixture validation |
-| [docs/demo-script.md](docs/demo-script.md) | Recording/demo sequence |
-| [docs/opencode-integration.md](docs/opencode-integration.md) | OpenCode integration architecture |
 | [docs/architecture.md](docs/architecture.md) | Runtime architecture |
 | [docs/security.md](docs/security.md) | Privacy and trust model |
 | [docs/release-playbook.md](docs/release-playbook.md) | Release messaging and checklist |
@@ -257,4 +376,7 @@ See [docs/security.md](docs/security.md).
 | `crates/ctx-telemetry` | Local stats, audit lines, benchmark summaries |
 | `demo/fixtures/opencode-auth-lab` | Realistic fixture project for smoke tests and benchmark proof |
 | `scripts/demo` | Demo smoke, MCP smoke, and benchmark scripts |
+| `scripts/install.sh` | Official user-local installer script |
 | `scripts/release` | Build, package, verify, and final QA scripts |
+| `packages/ctx-bin` | npm binary package that downloads prebuilt release assets |
+| `Formula/ctx.rb` | Homebrew formula source used for local tap preparation |

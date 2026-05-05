@@ -134,6 +134,81 @@ fn doctor_reports_ready_repo_after_index() {
 }
 
 #[test]
+fn update_check_reports_versions_and_channel_override() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["update", "--check", "--channel", "cargo"])
+        .current_dir(tmp.path())
+        .env("CTX_UPDATE_LATEST_VERSION", "0.3.0")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("current_version:"))
+        .stdout(predicate::str::contains("latest_version: 0.3.0"))
+        .stdout(predicate::str::contains("channel: cargo"))
+        .stdout(predicate::str::contains("update_available: true"));
+}
+
+#[test]
+fn update_channel_brew_prints_exact_upgrade_command() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .args(["update", "--channel", "brew"])
+        .current_dir(tmp.path())
+        .env("CTX_UPDATE_LATEST_VERSION", "0.3.0")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("channel: brew"))
+        .stdout(predicate::str::contains("brew upgrade ctx"));
+}
+
+#[test]
+fn update_detects_installer_channel_from_marker() {
+    let tmp = tempdir().expect("tempdir");
+    let marker_path = tmp.path().join("install.json");
+    fs::write(
+        &marker_path,
+        r#"{"channel":"installer","version":"0.1.0","install_dir":"/tmp/bin","binary_path":"/tmp/bin/ctx"}"#,
+    )
+    .expect("write marker");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("update")
+        .current_dir(tmp.path())
+        .env("CTX_INSTALL_MARKER_PATH", &marker_path)
+        .env("CTX_UPDATE_LATEST_VERSION", "0.3.0")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("channel: installer"))
+        .stdout(predicate::str::contains("curl -fsSL"))
+        .stdout(predicate::str::contains("scripts/install.sh | sh"));
+}
+
+#[test]
+fn update_without_detection_falls_back_to_guided_commands() {
+    let tmp = tempdir().expect("tempdir");
+
+    Command::cargo_bin("ctx")
+        .expect("bin")
+        .arg("update")
+        .current_dir(tmp.path())
+        .env_remove("CTX_INSTALL_MARKER_PATH")
+        .env("CTX_UPDATE_SELF_PATH", "/tmp/custom/ctx")
+        .env("CTX_UPDATE_LATEST_VERSION", "0.3.0")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("channel: unknown"))
+        .stdout(predicate::str::contains("cargo install ctx --force"))
+        .stdout(predicate::str::contains("npm update -g ctx-bin"))
+        .stdout(predicate::str::contains("brew upgrade ctx"))
+        .stdout(predicate::str::contains("curl -fsSL"));
+}
+
+#[test]
 fn prune_logs_reads_stdin_and_outputs_error_lines() {
     Command::cargo_bin("ctx")
         .expect("bin")
@@ -315,6 +390,7 @@ fn host_dashboard_reports_savings_and_cache_sections() {
     assert!(value["cache"]["index"]["reuse_ratio_pct"].is_number());
     assert!(value["cache"]["read"]["hit_rate_pct"].is_number());
     assert!(value["savings"]["savings_ratio_pct"].is_number());
+    assert!(value["savings"]["average_tokens_saved_per_run"].is_number());
     assert!(value["latest_activity"]["latest_query"].is_string());
     assert!(value["top_wins"]["best_query"].is_object());
 }
@@ -362,10 +438,12 @@ fn host_dashboard_text_render_includes_refined_sections() {
         .current_dir(tmp.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("📊 CTX Dashboard"))
+        .stdout(predicate::str::contains("## 📊 CTX Dashboard"))
+        .stdout(predicate::str::contains("| Metric | Value |"))
+        .stdout(predicate::str::contains("Avg saved / run"))
         .stdout(predicate::str::contains("**Latest Activity**"))
-        .stdout(predicate::str::contains("**Top Wins**"))
-        .stdout(predicate::str::contains("read_hit_rate_pct="));
+        .stdout(predicate::str::contains("**Top Win**"))
+        .stdout(predicate::str::contains("**Recent Audit**"));
 }
 
 #[test]
@@ -564,6 +642,7 @@ fn opencode_install_creates_project_config_and_command_files() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
     assert_eq!(report["profile"], "full");
     assert_eq!(report["commands_written"], 42);
+    assert_eq!(report["sidebar"]["enabled"], true);
     assert_eq!(
         report["instruction_files"]
             .as_array()
@@ -647,6 +726,12 @@ fn opencode_install_creates_project_config_and_command_files() {
             "missing {command}"
         );
     }
+    assert!(
+        tmp.path()
+            .join(".opencode/plugins/ctx-dashboard.tsx")
+            .exists()
+    );
+    assert!(tmp.path().join(".opencode/package.json").exists());
 
     let host_first = tmp.path().join(".opencode/instructions/ctx-host-first.md");
     assert!(host_first.exists(), "missing ctx-host-first.md");
@@ -700,13 +785,11 @@ fn opencode_install_creates_project_config_and_command_files() {
     let dashboard_command =
         std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-dashboard.md"))
             .expect("read dashboard command");
-    assert!(dashboard_command.contains("OpenCode-only"));
-    assert!(dashboard_command.contains("--json host-dashboard"));
-    assert!(dashboard_command.contains("CTX Dashboard"));
-    assert!(dashboard_command.contains("## 📊 CTX Dashboard"));
-    assert!(dashboard_command.contains("**Warnings**"));
-    assert!(dashboard_command.contains("**Latest Activity**"));
-    assert!(dashboard_command.contains("**Top Wins**"));
+    assert!(dashboard_command.contains("CTX Dashboard snapshot."));
+    assert!(dashboard_command.contains("host-dashboard"));
+    assert!(!dashboard_command.contains("--json host-dashboard"));
+    assert!(dashboard_command.contains("present its output as-is"));
+    assert!(dashboard_command.contains("do not rewrite the dashboard into another format"));
 
     let read_command = std::fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
         .expect("read read command");
@@ -750,6 +833,26 @@ fn opencode_install_creates_project_config_and_command_files() {
     assert!(learn_command.contains("OpenCode-only"));
     assert!(learn_command.contains("memory set"));
     assert!(learn_command.contains("--source learned"));
+
+    let sidebar_plugin =
+        std::fs::read_to_string(tmp.path().join(".opencode/plugins/ctx-dashboard.tsx"))
+            .expect("read sidebar plugin");
+    assert!(sidebar_plugin.contains("sidebar_content"));
+    assert!(sidebar_plugin.contains("CTX Dashboard"));
+    assert!(sidebar_plugin.contains("host-dashboard"));
+
+    let opencode_package = std::fs::read_to_string(tmp.path().join(".opencode/package.json"))
+        .expect("read opencode package");
+    assert!(opencode_package.contains("@opencode-ai/plugin"));
+    assert!(opencode_package.contains("@opentui/solid"));
+    assert!(opencode_package.contains("solid-js"));
+    assert!(opencode_package.contains("^1.14.19"));
+    assert!(opencode_package.contains("^0.1.101"));
+
+    let tui_config =
+        std::fs::read_to_string(tmp.path().join(".opencode/tui.json")).expect("read tui config");
+    assert!(tui_config.contains("https://opencode.ai/tui.json"));
+    assert!(tui_config.contains("./plugins/ctx-dashboard.tsx"));
 }
 
 #[test]
@@ -767,6 +870,7 @@ fn opencode_install_core_profile_writes_a_leaner_surface() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json");
     assert_eq!(report["profile"], "core");
     assert_eq!(report["commands_written"], 9);
+    assert_eq!(report["sidebar"]["enabled"], false);
 
     let commands_dir = tmp.path().join(".opencode/commands");
     for command in [
@@ -795,6 +899,13 @@ fn opencode_install_core_profile_writes_a_leaner_surface() {
             "unexpected core command {command}"
         );
     }
+    assert!(
+        !tmp.path()
+            .join(".opencode/plugins/ctx-dashboard.tsx")
+            .exists()
+    );
+    assert!(!tmp.path().join(".opencode/package.json").exists());
+    assert!(!tmp.path().join(".opencode/tui.json").exists());
 
     let host_first_text =
         std::fs::read_to_string(tmp.path().join(".opencode/instructions/ctx-host-first.md"))
@@ -1161,6 +1272,27 @@ fn release_verify_script_validates_packaged_artifact() {
 }
 
 #[test]
+fn release_version_references_target_v0_2_0() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root_manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root cargo manifest");
+    let cli_manifest =
+        fs::read_to_string(root.join("crates/ctx-cli/Cargo.toml")).expect("cli cargo manifest");
+    let npm_manifest =
+        fs::read_to_string(root.join("packages/ctx-bin/package.json")).expect("npm manifest");
+    let formula = fs::read_to_string(root.join("Formula/ctx.rb")).expect("homebrew formula");
+    let build_script =
+        fs::read_to_string(root.join("scripts/release/build.sh")).expect("build script");
+    let readme = fs::read_to_string(root.join("README.md")).expect("readme");
+
+    assert!(root_manifest.contains("version = \"0.2.0\""));
+    assert!(cli_manifest.contains("version.workspace = true"));
+    assert!(npm_manifest.contains("\"version\": \"0.2.0\""));
+    assert!(formula.contains("v0.2.0"));
+    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.0}\""));
+    assert!(readme.contains("ctx-0.2.0-aarch64-apple-darwin.tar.gz"));
+}
+
+#[test]
 fn release_docs_cover_qa_and_community_assets() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let readme = fs::read_to_string(root.join("README.md")).expect("readme should exist");
@@ -1188,6 +1320,31 @@ fn release_docs_cover_qa_and_community_assets() {
     assert!(release_template.contains("## Install"));
     assert!(qa_script.contains("verify-artifact.sh"));
     assert!(qa_script.contains("opencode-auth-lab-smoke.sh"));
+}
+
+#[test]
+fn release_publish_scripts_cover_public_channels() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let publish_crate =
+        fs::read_to_string(root.join("scripts/release/publish-crate.sh")).expect("crate script");
+    let publish_npm =
+        fs::read_to_string(root.join("scripts/release/publish-npm.sh")).expect("npm script");
+    let publish_release =
+        fs::read_to_string(root.join("scripts/release/publish-github-release.sh"))
+            .expect("github release script");
+    let prepare_formula =
+        fs::read_to_string(root.join("scripts/release/prepare-homebrew-formula.sh"))
+            .expect("homebrew script");
+
+    assert!(publish_crate.contains("publish -p"));
+    assert!(publish_crate.contains("$HOME/.cargo/bin/cargo"));
+    assert!(publish_npm.contains("npm publish"));
+    assert!(publish_npm.contains("--access public"));
+    assert!(publish_release.contains("release create"));
+    assert!(publish_release.contains("release upload"));
+    assert!(publish_release.contains("release-manifest.json"));
+    assert!(publish_release.contains("SHA256SUMS"));
+    assert!(prepare_formula.contains("archive/refs/tags/v${version}.tar.gz"));
 }
 
 #[test]

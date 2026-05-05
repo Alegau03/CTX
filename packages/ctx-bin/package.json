@@ -1,0 +1,25 @@
+{
+  "name": "ctx-bin",
+  "version": "0.2.0",
+  "description": "Prebuilt CTX binary distribution for npm users",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alegau03/CTX.git"
+  },
+  "homepage": "https://github.com/Alegau03/CTX",
+  "bin": {
+    "ctx": "bin/ctx.js"
+  },
+  "files": [
+    "bin",
+    "install.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

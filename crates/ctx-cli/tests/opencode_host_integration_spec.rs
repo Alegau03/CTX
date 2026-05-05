@@ -45,6 +45,12 @@ fn opencode_project_bootstrap_generates_local_mcp_and_command_assets() {
 
     assert!(tmp.path().join("opencode.json").exists());
     assert!(tmp.path().join(".opencode/commands").is_dir());
+    assert!(
+        tmp.path()
+            .join(".opencode/plugins/ctx-dashboard.tsx")
+            .exists()
+    );
+    assert!(tmp.path().join(".opencode/package.json").exists());
 }
 
 #[test]
@@ -180,13 +186,11 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     let dashboard_command =
         fs::read_to_string(tmp.path().join(".opencode/commands/ctx-dashboard.md"))
             .expect("ctx-dashboard command");
-    assert!(dashboard_command.contains("OpenCode-only"));
-    assert!(dashboard_command.contains("--json host-dashboard"));
-    assert!(dashboard_command.contains("CTX Dashboard"));
-    assert!(dashboard_command.contains("## 📊 CTX Dashboard"));
-    assert!(dashboard_command.contains("**Latest Activity**"));
-    assert!(dashboard_command.contains("**Top Wins**"));
-    assert!(dashboard_command.contains("**Recent Audit**"));
+    assert!(dashboard_command.contains("CTX Dashboard snapshot."));
+    assert!(dashboard_command.contains("host-dashboard"));
+    assert!(!dashboard_command.contains("--json host-dashboard"));
+    assert!(dashboard_command.contains("present its output as-is"));
+    assert!(dashboard_command.contains("do not rewrite the dashboard into another format"));
 
     let read_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-read.md"))
         .expect("ctx-read command");
@@ -255,6 +259,24 @@ fn opencode_host_selected_model_remains_owner_while_ctx_provides_tools() {
     assert!(instructions.contains("/ctx-run"));
     assert!(instructions.contains("/ctx-learn"));
 
+    let sidebar_plugin = fs::read_to_string(tmp.path().join(".opencode/plugins/ctx-dashboard.tsx"))
+        .expect("ctx sidebar plugin");
+    assert!(sidebar_plugin.contains("sidebar_content"));
+    assert!(sidebar_plugin.contains("CTX Dashboard"));
+    assert!(sidebar_plugin.contains("host-dashboard"));
+
+    let opencode_package =
+        fs::read_to_string(tmp.path().join(".opencode/package.json")).expect("opencode package");
+    assert!(opencode_package.contains("@opencode-ai/plugin"));
+    assert!(opencode_package.contains("@opentui/solid"));
+    assert!(opencode_package.contains("solid-js"));
+    assert!(opencode_package.contains("^1.14.19"));
+    assert!(opencode_package.contains("^0.1.101"));
+
+    let tui_config = fs::read_to_string(tmp.path().join(".opencode/tui.json")).expect("tui config");
+    assert!(tui_config.contains("https://opencode.ai/tui.json"));
+    assert!(tui_config.contains("./plugins/ctx-dashboard.tsx"));
+
     let index_command = fs::read_to_string(tmp.path().join(".opencode/commands/ctx-index.md"))
         .expect("ctx-index command");
     assert!(index_command.contains("!`"));
@@ -310,4 +332,11 @@ fn opencode_core_profile_keeps_only_the_lean_command_set() {
     assert!(instructions.contains("ctx opencode install --profile full"));
     assert!(!instructions.contains("/ctx-dashboard"));
     assert!(!instructions.contains("/ctx-toolbook-import"));
+    assert!(
+        !tmp.path()
+            .join(".opencode/plugins/ctx-dashboard.tsx")
+            .exists()
+    );
+    assert!(!tmp.path().join(".opencode/package.json").exists());
+    assert!(!tmp.path().join(".opencode/tui.json").exists());
 }

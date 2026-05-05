@@ -73,6 +73,7 @@ pub fn install_opencode_integration(
     }
 
     let command_paths = asset_file_paths(&commands_dir, &templates, "md");
+    let sidebar = sync_opencode_sidebar_assets(repo_root, profile, &ctx_binary)?;
 
     Ok(json!({
         "host": "opencode",
@@ -85,16 +86,64 @@ pub fn install_opencode_integration(
         "commands_written": command_paths.len(),
         "command_files": command_paths,
         "instruction_files": instruction_paths,
+        "sidebar": sidebar,
         "available_profiles": ["core", "full"],
         "next_step": match profile {
             OpencodeInstallProfile::Full => {
-                "open this repo in OpenCode and run /ctx-doctor or /ctx-pack <task>"
+                "open this repo in OpenCode, check the CTX panel in the right sidebar, then run /ctx-doctor or /ctx-pack <task>"
             }
             OpencodeInstallProfile::Core => {
-                "open this repo in OpenCode and start with /ctx-doctor, or rerun `ctx opencode install --profile full` to unlock the full CTX surface"
+                "open this repo in OpenCode and start with /ctx-doctor, or rerun `ctx opencode install --profile full` to unlock the full CTX surface and the live sidebar dashboard"
             }
         }
     }))
+}
+
+fn sync_opencode_sidebar_assets(
+    repo_root: &Path,
+    profile: OpencodeInstallProfile,
+    ctx_binary: &str,
+) -> Result<Value> {
+    let plugins_dir = repo_root.join(".opencode/plugins");
+    let plugin_path = plugins_dir.join("ctx-dashboard.tsx");
+    let package_path = repo_root.join(".opencode/package.json");
+    let tui_path = repo_root.join(".opencode/tui.json");
+    let plugin_spec = "./plugins/ctx-dashboard.tsx";
+
+    match profile {
+        OpencodeInstallProfile::Full => {
+            fs::create_dir_all(&plugins_dir)
+                .with_context(|| format!("failed to create {}", plugins_dir.display()))?;
+            fs::write(
+                &plugin_path,
+                render_opencode_sidebar_plugin(repo_root, ctx_binary)?,
+            )
+            .with_context(|| format!("failed to write {}", plugin_path.display()))?;
+            upsert_opencode_package_json(&package_path)?;
+            upsert_opencode_tui_json(&tui_path, plugin_spec)?;
+            Ok(json!({
+                "enabled": true,
+                "plugin_path": plugin_path.display().to_string(),
+                "package_path": package_path.display().to_string(),
+                "tui_path": tui_path.display().to_string(),
+                "plugin_spec": plugin_spec
+            }))
+        }
+        OpencodeInstallProfile::Core => {
+            if plugin_path.exists() {
+                fs::remove_file(&plugin_path).with_context(|| {
+                    format!(
+                        "failed to remove stale sidebar plugin {}",
+                        plugin_path.display()
+                    )
+                })?;
+            }
+            remove_opencode_tui_plugin(&tui_path, plugin_spec)?;
+            Ok(json!({
+                "enabled": false
+            }))
+        }
+    }
 }
 
 fn upsert_opencode_project_config(repo_root: &Path) -> Result<PathBuf> {
@@ -214,6 +263,315 @@ fn render_opencode_command_file(
         .replace("{{CTX_BIN}}", &shell_quote(ctx_binary))
         .replace("{{REPO_ROOT}}", &shell_quote(&repo_root.to_string_lossy()));
     format!("---\ndescription: {description}\n---\n\n{rendered}\n")
+}
+
+fn upsert_opencode_package_json(path: &Path) -> Result<()> {
+    let mut root = if path.is_file() {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        serde_json::from_str::<Value>(&raw)
+            .with_context(|| format!("failed to parse {}", path.display()))?
+    } else {
+        json!({
+            "private": true,
+            "type": "module"
+        })
+    };
+
+    let object = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("{} must contain a top-level JSON object", path.display()))?;
+    object.insert("private".to_string(), Value::Bool(true));
+    object.insert("type".to_string(), Value::String("module".to_string()));
+
+    let dependencies = object
+        .entry("dependencies".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    let dependency_object = dependencies.as_object_mut().ok_or_else(|| {
+        anyhow!(
+            "{} field 'dependencies' must be a JSON object",
+            path.display()
+        )
+    })?;
+
+    for (name, version) in [
+        ("@opencode-ai/plugin", "^1.14.19"),
+        ("@opentui/core", "^0.1.101"),
+        ("@opentui/solid", "^0.1.101"),
+        ("solid-js", "^1.9.10"),
+    ] {
+        dependency_object.insert(name.to_string(), Value::String(version.to_string()));
+    }
+
+    fs::write(path, format!("{}\n", serde_json::to_string_pretty(&root)?))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn upsert_opencode_tui_json(path: &Path, plugin_spec: &str) -> Result<()> {
+    let mut root = if path.is_file() {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        serde_json::from_str::<Value>(&raw)
+            .with_context(|| format!("failed to parse {}", path.display()))?
+    } else {
+        json!({})
+    };
+
+    let object = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("{} must contain a top-level JSON object", path.display()))?;
+    object.insert(
+        "$schema".to_string(),
+        Value::String("https://opencode.ai/tui.json".to_string()),
+    );
+
+    let plugins = object
+        .entry("plugin".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let array = plugins
+        .as_array_mut()
+        .ok_or_else(|| anyhow!("{} field 'plugin' must be an array", path.display()))?;
+
+    if !array.iter().any(|item| item.as_str() == Some(plugin_spec)) {
+        array.push(Value::String(plugin_spec.to_string()));
+    }
+
+    fs::write(path, format!("{}\n", serde_json::to_string_pretty(&root)?))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn remove_opencode_tui_plugin(path: &Path, plugin_spec: &str) -> Result<()> {
+    if !path.is_file() {
+        return Ok(());
+    }
+
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut root = serde_json::from_str::<Value>(&raw)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    let object = root
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("{} must contain a top-level JSON object", path.display()))?;
+
+    if let Some(plugins) = object.get_mut("plugin") {
+        let array = plugins
+            .as_array_mut()
+            .ok_or_else(|| anyhow!("{} field 'plugin' must be an array", path.display()))?;
+        array.retain(|item| item.as_str() != Some(plugin_spec));
+        if array.is_empty() {
+            object.remove("plugin");
+        }
+    }
+
+    let only_schema = object.len() == 1 && object.contains_key("$schema");
+    let empty = object.is_empty();
+    if empty || only_schema {
+        fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
+        return Ok(());
+    }
+
+    fs::write(path, format!("{}\n", serde_json::to_string_pretty(&root)?))
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn render_opencode_sidebar_plugin(repo_root: &Path, ctx_binary: &str) -> Result<String> {
+    let repo_root_js = serde_json::to_string(&repo_root.to_string_lossy().to_string())?;
+    let ctx_binary_js = serde_json::to_string(ctx_binary)?;
+
+    Ok(format!(
+        r##"/** @jsxImportSource @opentui/solid */
+import type {{ TuiPlugin, TuiPluginApi, TuiPluginModule }} from "@opencode-ai/plugin/tui";
+import {{ createEffect, createSignal, onCleanup }} from "solid-js";
+import {{ execFile }} from "node:child_process";
+import {{ promisify }} from "node:util";
+
+const id = "@ctx/sidebar-dashboard";
+const SIDEBAR_ORDER = 140;
+const REFRESH_INTERVAL_MS = 15000;
+const REPO_ROOT = {repo_root_js};
+const CTX_BIN = {ctx_binary_js};
+const execFileAsync = promisify(execFile);
+
+type Dashboard = any;
+type Line = {{ text: string; fg?: string; bold?: boolean }};
+const CTX_RED = "#ff375f";
+const CTX_BLUE = "#4da3ff";
+
+function shorten(value: string | null | undefined, limit = 28) {{
+  if (!value) return "none";
+  if (value.length <= limit) return value;
+  return `${{value.slice(0, limit - 1)}}…`;
+}}
+
+function formatTokens(value: number | null | undefined) {{
+  return `${{Number(value || 0).toLocaleString("en-US")}} tok`;
+}}
+
+function formatPct(value: number | null | undefined) {{
+  return `${{Number(value || 0).toFixed(1)}}%`;
+}}
+
+function metric(label: string, value: string, fg?: string): Line {{
+  return {{ text: `${{label.padEnd(10)}} ${{value}}`, fg }};
+}}
+
+async function loadDashboard() {{
+  const {{ stdout }} = await execFileAsync(
+    CTX_BIN,
+    ["--json", "--repo-root", REPO_ROOT, "host-dashboard"],
+    {{
+      cwd: REPO_ROOT,
+      maxBuffer: 1024 * 1024,
+    }},
+  );
+  return JSON.parse(stdout || "{{}}");
+}}
+
+function buildLines(dashboard: Dashboard): Line[] {{
+  const savings = dashboard?.savings || {{}};
+  const cache = dashboard?.cache || {{}};
+  const index = cache.index || {{}};
+  const read = cache.read || {{}};
+  const topWins = dashboard?.top_wins || {{}};
+  const bestQuery = topWins.best_query || {{}};
+  const latestPack = dashboard?.latest_activity?.latest_pack_path?.split("/").pop() || "none";
+
+  return [
+    {{ text: "CTX Dashboard", fg: CTX_RED, bold: true }},
+    {{ text: `${{dashboard?.repo || "repo"}}`, fg: CTX_BLUE }},
+    {{ text: "" }},
+    {{ text: "Savings", fg: CTX_RED, bold: true }},
+    metric("Saved", formatTokens(savings.estimated_tokens_saved)),
+    metric("Avg/run", formatTokens(savings.average_tokens_saved_per_run)),
+    metric("Avg red", formatPct(savings.average_reduction_pct)),
+    metric("Latest", formatPct(savings.latest_reduction_pct)),
+    metric("Runs", String(savings.sampled_runs || 0)),
+    {{ text: "" }},
+    {{ text: "Cache", fg: CTX_RED, bold: true }},
+    metric("Read hit", formatPct(read.hit_rate_pct)),
+    metric("Idx reuse", formatPct(index.reuse_ratio_pct)),
+    metric("Reads", String(read.total_reads || 0)),
+    metric("Tracked", String(read.tracked_files || 0)),
+    {{ text: "" }},
+    {{ text: "Top Win", fg: CTX_RED, bold: true }},
+    {{ text: shorten(bestQuery.query || "none"), fg: CTX_BLUE }},
+    metric("Saved", formatTokens(bestQuery.estimated_tokens_saved)),
+    metric("Runs", String(bestQuery.runs || 0)),
+    metric("Avg red", formatPct(bestQuery.average_reduction_pct)),
+    {{ text: "" }},
+    {{ text: "Artifact", fg: CTX_RED, bold: true }},
+    {{ text: shorten(latestPack, 34), fg: CTX_BLUE }},
+  ];
+}}
+
+function colorFor(line: Line) {{
+  return line.fg || CTX_BLUE;
+}}
+
+function SidebarContentView(props: {{ api: TuiPluginApi; sessionID: string }}) {{
+  const [lines, setLines] = createSignal<Line[]>([
+    {{ text: "CTX Dashboard", fg: CTX_RED, bold: true }},
+    {{ text: "Loading dashboard…", fg: CTX_BLUE }},
+  ]);
+
+  let disposed = false;
+  let loadVersion = 0;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+
+  const reload = () => {{
+    const currentVersion = ++loadVersion;
+    void loadDashboard()
+      .then((dashboard) => {{
+        if (disposed || currentVersion !== loadVersion) return;
+        setLines(buildLines(dashboard));
+      }})
+      .catch((error) => {{
+        if (disposed || currentVersion !== loadVersion) return;
+        setLines([
+          {{ text: "CTX Dashboard", fg: CTX_RED, bold: true }},
+          {{ text: "Dashboard unavailable", fg: CTX_RED }},
+          {{ text: shorten(String(error?.message || error), 30), fg: CTX_BLUE }},
+        ]);
+      }});
+  }};
+
+  const queueRefresh = (delay: number) => {{
+    const timer = setTimeout(() => {{
+      timers.delete(timer);
+      reload();
+    }}, delay);
+    timers.add(timer);
+  }};
+
+  const scheduleRefresh = () => {{
+    queueRefresh(150);
+    queueRefresh(750);
+  }};
+
+  createEffect(() => {{
+    props.sessionID;
+    reload();
+    queueRefresh(600);
+    queueRefresh(1800);
+  }});
+
+  const interval = setInterval(reload, REFRESH_INTERVAL_MS);
+  const unsubscribers = [
+    props.api.event.on("session.updated", (event) => {{
+      if (event.properties?.info?.id === props.sessionID) scheduleRefresh();
+    }}),
+    props.api.event.on("message.updated", (event) => {{
+      if (event.properties?.info?.sessionID === props.sessionID) scheduleRefresh();
+    }}),
+    props.api.event.on("message.removed", (event) => {{
+      if (event.properties?.sessionID === props.sessionID) scheduleRefresh();
+    }}),
+    props.api.event.on("tui.session.select", (event) => {{
+      if (event.properties?.sessionID === props.sessionID) scheduleRefresh();
+    }}),
+  ];
+
+  onCleanup(() => {{
+    disposed = true;
+    clearInterval(interval);
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
+    for (const unsubscribe of unsubscribers) unsubscribe();
+  }});
+
+  return (
+    <box gap={{0}}>
+      {{lines().map((line) => (
+        <text fg={{colorFor(line)}} wrapMode="none">
+          {{line.bold ? <b>{{line.text || " "}}</b> : line.text || " "}}
+        </text>
+      ))}}
+    </box>
+  );
+}}
+
+const tui: TuiPlugin = async (api) => {{
+  api.slots.register({{
+    order: SIDEBAR_ORDER,
+    slots: {{
+      sidebar_content(_ctx, props: {{ session_id: string }}) {{
+        return <SidebarContentView api={{api}} sessionID={{props.session_id}} />;
+      }},
+    }},
+  }});
+}};
+
+const pluginModule: TuiPluginModule & {{ id: string }} = {{
+  id,
+  tui,
+}};
+
+export default pluginModule;
+"##
+    ))
 }
 
 fn merge_instruction_entries(root: &mut Map<String, Value>, entries: &[&str]) -> Result<()> {
@@ -927,21 +1285,16 @@ Keep any follow-up explanation to one short sentence."#,
         HostActionTemplate {
             slug: "ctx-dashboard",
             description: "Benchmark | Show the local CTX dashboard snapshot",
-            body: r#"OpenCode-only CTX dashboard snapshot for this repository.
+            body: r#"CTX Dashboard snapshot.
 
-!`{{CTX_CMD}} --json host-dashboard`
+Run the deterministic CTX dashboard command below and present its output as-is.
 
-Render exactly this compact markdown:
-- `## 📊 CTX Dashboard`
-- `**Savings**`
-- `**Cache**`
-- `**Latest Activity**`
-- `**Top Wins**`
-- `**Warnings**`
-- `**Recent Audit**`
+Rules:
+- do not inspect files manually
+- do not call subagents
+- do not rewrite the dashboard into another format
 
-Show the useful result immediately.
-Keep any follow-up explanation to one short sentence."#,
+!`{{CTX_CMD}} host-dashboard`"#,
         },
         HostActionTemplate {
             slug: "ctx-opencode-install",
@@ -1015,7 +1368,7 @@ For normal prompts, prefer CTX-first behavior:
 9. For ambiguity about likely scope or intent, use `/ctx-explain`.
 10. For implementation planning, use `/ctx-plan` to combine retrieval, graph, memory, and pack signals before editing.
 11. For quick before-vs-packed context density, use `/ctx-compare`.
-12. For a local snapshot of savings, cache reuse, and warnings, use `/ctx-dashboard`.
+12. For a local snapshot of savings, cache reuse, and runtime health, use `/ctx-dashboard`.
 13. For recent token savings and biggest pack wins, use `/ctx-gain`.
 14. For large CLI manuals or tool cheat sheets, import them once with `/ctx-toolbook-import`, then use `/ctx-toolbook-search` or `/ctx-toolbook-pack` instead of putting manuals in AGENTS.md.
 15. For reusable lessons learned during work, use `/ctx-learn`.

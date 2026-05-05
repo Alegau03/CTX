@@ -1,66 +1,35 @@
 # Install CTX
 
-CTX is distributed as a local CLI named `ctx`. The CLI bootstraps the local runtime, installs OpenCode project assets, and exposes MCP tools.
+CTX is distributed as a local CLI named `ctx`. The CLI bootstraps the runtime, installs OpenCode project assets, and exposes local MCP tools.
 
-Daily usage is OpenCode-first:
+## Quick Install
 
-1. install `ctx`
-2. run `ctx init`, `ctx index`, and `ctx opencode install` in a repo
-3. open `opencode`
-4. use `/ctx-*` commands inside OpenCode
-
-## Cargo Install
-
-From the repository root:
+### Cargo
 
 ```bash
-cargo install --locked --path crates/ctx-cli
+cargo install ctx
 ```
 
-If `ctx` is installed but not found:
+### One-Line Installer
 
 ```bash
-export PATH="$HOME/.cargo/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
 ```
 
-Verify:
+### npm
 
 ```bash
-ctx help
-ctx doctor
+npm i -g ctx-bin
 ```
 
-## GitHub Releases
-
-After public releases are published, download the archive for your platform from:
-
-```text
-https://github.com/Alegau03/CTX/releases
-```
-
-Current release archive availability:
-
-| Platform | Artifact |
-|---|---|
-| macOS Apple Silicon | `ctx-<version>-aarch64-apple-darwin.tar.gz` |
-| macOS Intel | source install for now |
-| Linux x64 | source install for now |
-| Windows x64 | source install for now |
-
-Verify checksum first:
+### Homebrew
 
 ```bash
-shasum -a 256 -c SHA256SUMS
+brew tap Alegau03/ctx
+brew install ctx
 ```
 
-Install on macOS or Linux:
-
-```bash
-tar -xzf ctx-0.1.0-<target>.tar.gz
-sudo install -m 0755 ctx-0.1.0-<target>/ctx /usr/local/bin/ctx
-```
-
-For macOS Intel, Linux, and Windows, use source install until matching release archives are published:
+### Source Install
 
 ```bash
 git clone https://github.com/Alegau03/CTX.git
@@ -68,26 +37,101 @@ cd CTX
 cargo install --locked --path crates/ctx-cli
 ```
 
-Verify install:
+Verify the installed binary:
 
 ```bash
 ctx help
 ctx doctor
+ctx update --check
 ```
 
-## Homebrew
+## Update CTX
 
-Local formula test:
+Use the update path that matches how CTX was installed.
+
+### Native Update Command
 
 ```bash
-brew install ./Formula/ctx.rb
+ctx update
+ctx update --check
 ```
 
-The formula points at the public GitHub tag source archive, not the compiled release archive. When tagging a new version, update the `url` and `sha256` in `Formula/ctx.rb` to match that new tag source tarball.
+What it does:
 
-## Enable A Repository
+- prints the installed version and latest available version
+- detects the install channel when possible
+- reruns the official installer for installer-based installs
+- prints the exact correct update command for Cargo, npm, and Homebrew installs
+- falls back to safe multi-channel guidance if detection is ambiguous
 
-Run from a project root:
+### Cargo
+
+```bash
+cargo install ctx --force
+```
+
+### Installer Script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
+```
+
+### npm
+
+```bash
+npm update -g ctx-bin
+```
+
+### Homebrew
+
+```bash
+brew upgrade ctx
+```
+
+### `--channel` Override
+
+If CTX cannot safely infer how it was installed, force the expected channel:
+
+```bash
+ctx update --channel installer
+ctx update --channel cargo
+ctx update --channel npm
+ctx update --channel brew
+```
+
+## GitHub Releases
+
+Release artifacts live at:
+
+```text
+https://github.com/Alegau03/CTX/releases
+```
+
+Current archive naming:
+
+| Platform | Artifact |
+|---|---|
+| macOS Apple Silicon | `ctx-<version>-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `ctx-<version>-x86_64-apple-darwin.tar.gz` |
+| Linux x64 | `ctx-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows x64 | `ctx-<version>-x86_64-pc-windows-msvc.zip` |
+
+Verify checksums:
+
+```bash
+shasum -a 256 -c SHA256SUMS
+```
+
+Install from an archive on macOS or Linux:
+
+```bash
+tar -xzf ctx-<version>-<target>.tar.gz
+sudo install -m 0755 ctx-<version>-<target>/ctx /usr/local/bin/ctx
+```
+
+Archive installs are not automatically identifiable by `ctx update`, so use an explicit channel override or rerun the official installer if you want to move to the installer-managed path.
+
+## Enable CTX In A Repository
 
 ```bash
 cd /path/to/your/project
@@ -96,14 +140,11 @@ ctx index
 ctx opencode install
 ```
 
-Expected result:
+Optional lean setup:
 
-- `.ctx/config.toml` exists
-- `.ctx/graph.db` exists
-- `opencode.json` includes a local CTX MCP server
-- `.opencode/commands/*.md` exists
-- `.opencode/instructions/ctx-host-first.md` exists
-- optional compatibility rule files such as `AGENTS.md`, `CLAUDE.md`, `CODEX.md`, and `.github/copilot-instructions.md` can later be imported into graph memory with `/ctx-memory-bootstrap`
+```bash
+ctx opencode install --profile core
+```
 
 Then open OpenCode:
 
@@ -111,7 +152,7 @@ Then open OpenCode:
 opencode
 ```
 
-Start inside OpenCode:
+Start with:
 
 ```text
 /ctx
@@ -134,8 +175,6 @@ CTX_TARGET=x86_64-apple-darwin scripts/release/build.sh
 CTX_DIST_DIR=/tmp/ctx-dist scripts/release/build.sh
 ```
 
-Additional targets such as Linux x64 and Windows x64 require a matching native runner or a configured cross-compilation toolchain. For reliable public releases, run the same script on the matching OS or CI runner for each target you publish.
-
 Release output:
 
 ```text
@@ -145,7 +184,7 @@ dist/SHA256SUMS
 dist/release-manifest.json
 ```
 
-## Smoke Tests
+## Verification
 
 Installed binary smoke:
 
@@ -159,20 +198,6 @@ OpenCode integration smoke:
 scripts/release/opencode-smoke.sh ./target/release/ctx
 ```
 
-Demo fixture smoke:
-
-```bash
-scripts/demo/opencode-auth-lab-smoke.sh ./target/release/ctx
-scripts/demo/opencode-auth-lab-mcp-smoke.sh ./target/release/ctx
-scripts/demo/opencode-auth-lab-benchmark.sh ./target/release/ctx
-```
-
-Final QA gate:
-
-```bash
-scripts/release/final-qa.sh
-```
-
 Archive verification:
 
 ```bash
@@ -180,8 +205,8 @@ scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.tar.gz dist/SHA25
 scripts/release/verify-artifact.sh dist/ctx-<version>-<target>.zip dist/SHA256SUMS
 ```
 
-Release metadata:
+Final release gate:
 
-```text
-dist/release-manifest.json
+```bash
+scripts/release/final-qa.sh
 ```

@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "Local telemetry and reporting utilities for CTX"
 
 [dependencies]
 anyhow.workspace = true
