@@ -1348,6 +1348,25 @@ fn release_publish_scripts_cover_public_channels() {
 }
 
 #[test]
+fn release_workflow_covers_public_build_matrix() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workflow = fs::read_to_string(root.join(".github/workflows/release.yml"))
+        .expect("release workflow should exist");
+
+    assert!(workflow.contains("workflow_dispatch:"));
+    assert!(workflow.contains("push:"));
+    assert!(workflow.contains("tags:"));
+    assert!(workflow.contains("macos-latest"));
+    assert!(workflow.contains("macos-15-intel"));
+    assert!(workflow.contains("ubuntu-latest"));
+    assert!(workflow.contains("windows-latest"));
+    assert!(workflow.contains("aarch64-apple-darwin"));
+    assert!(workflow.contains("x86_64-apple-darwin"));
+    assert!(workflow.contains("x86_64-unknown-linux-gnu"));
+    assert!(workflow.contains("x86_64-pc-windows-msvc"));
+}
+
+#[test]
 fn memory_commands_support_set_get_list_delete() {
     let tmp = tempdir().expect("tempdir");
 

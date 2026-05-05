@@ -1,0 +1,100 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the leading v
+        required: true
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      CTX_VERSION: ${{ inputs.version || github.ref_name }}
+    steps:
+      - name: Normalize version
+        shell: bash
+        run: echo "CTX_VERSION=${CTX_VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Build release artifact
+        shell: bash
+        env:
+          CTX_RELEASE_RUN_TESTS: "0"
+          CTX_TARGET: ${{ matrix.target }}
+        run: scripts/release/build.sh
+
+      - name: Upload release fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            dist/ctx-${{ env.CTX_VERSION }}-${{ matrix.target }}.tar.gz
+            dist/ctx-${{ env.CTX_VERSION }}-${{ matrix.target }}.zip
+            dist/SHA256SUMS
+            dist/release-manifest.json
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      CTX_VERSION: ${{ inputs.version || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Normalize version
+        shell: bash
+        run: echo "CTX_VERSION=${CTX_VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Download release fragments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist-fragments
+
+      - name: Assemble release directory
+        shell: bash
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          python3 scripts/release/assemble-release-assets.py \
+            "$CTX_VERSION" \
+            dist-fragments \
+            dist
+
+      - name: Publish GitHub release
+        shell: bash
+        run: scripts/release/publish-github-release.sh "$CTX_VERSION" dist

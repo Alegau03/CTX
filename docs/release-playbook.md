@@ -120,6 +120,17 @@ Final gate:
 scripts/release/final-qa.sh
 ```
 
+## Release Workflow
+
+The repository includes `.github/workflows/release.yml` for the public artifact matrix. On tag push or manual dispatch it builds:
+
+- `aarch64-apple-darwin` on `macos-latest`
+- `x86_64-apple-darwin` on `macos-15-intel`
+- `x86_64-unknown-linux-gnu` on `ubuntu-latest`
+- `x86_64-pc-windows-msvc` on `windows-latest`
+
+The workflow assembles a combined `SHA256SUMS` and `release-manifest.json`, then publishes the GitHub Release assets for that tag.
+
 ## Checklist
 
 - README and guide are OpenCode-first

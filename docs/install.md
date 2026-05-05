@@ -166,6 +166,13 @@ Build, test, package, and smoke-test the current platform:
 scripts/release/build.sh
 ```
 
+For the public multi-platform release matrix, use the GitHub Actions workflow in `.github/workflows/release.yml`. It builds the release artifacts on:
+
+- `macos-latest` for `aarch64-apple-darwin`
+- `macos-15-intel` for `x86_64-apple-darwin`
+- `ubuntu-latest` for `x86_64-unknown-linux-gnu`
+- `windows-latest` for `x86_64-pc-windows-msvc`
+
 Useful environment variables:
 
 ```bash
