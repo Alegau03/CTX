@@ -174,3 +174,199 @@ Intro text.
             .any(|s| s.name == "Services" && s.kind == SymbolKind::Module)
     );
 }
+
+// ─── Swift / iOS / macOS ─────────────────────────────────────────────────────
+
+#[test]
+fn extracts_swift_class_struct_enum_protocol() {
+    let code = r#"
+import Foundation
+
+protocol Greeter {
+    func greet() -> String
+}
+
+class HomeViewController: UIViewController {
+    func viewDidLoad() {}
+}
+
+struct User {
+    let name: String
+}
+
+enum AuthState {
+    case signedIn
+    case signedOut
+}
+
+extension User {
+    func displayName() -> String { name }
+}
+"#;
+
+    let symbols = extract_symbols(code, "App/Home.swift");
+
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "Greeter" && s.kind == SymbolKind::Class),
+        "expected protocol Greeter, got {:?}",
+        symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "HomeViewController" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "User" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "AuthState" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Import && s.signature.contains("import Foundation"))
+    );
+}
+
+#[test]
+fn extracts_swift_functions_and_init() {
+    let code = r#"
+class TokenStore {
+    init(name: String) {}
+    deinit {}
+    func refresh() -> Bool { true }
+}
+
+func freeStanding(value: Int) -> Int { value + 1 }
+"#;
+
+    let symbols = extract_symbols(code, "App/TokenStore.swift");
+
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "init" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "deinit" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "refresh" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "freeStanding" && s.kind == SymbolKind::Function)
+    );
+}
+
+#[test]
+fn extracts_swift_xctest_methods_as_tests() {
+    let code = r#"
+import XCTest
+
+class AuthServiceTests: XCTestCase {
+    func testRefreshSucceedsWithValidToken() {}
+    func testSignOutClearsState() {}
+    func helperNotATest() {}
+}
+"#;
+
+    let symbols = extract_symbols(code, "Tests/AuthServiceTests.swift");
+
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "testRefreshSucceedsWithValidToken" && s.kind == SymbolKind::Test)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "testSignOutClearsState" && s.kind == SymbolKind::Test)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "helperNotATest" && s.kind == SymbolKind::Function)
+    );
+}
+
+#[test]
+fn extracts_apple_framework_imports() {
+    let code = r#"
+import UIKit
+import SwiftUI
+import Combine
+import CoreData
+"#;
+
+    let symbols = extract_symbols(code, "App/Frameworks.swift");
+
+    for fw in ["UIKit", "SwiftUI", "Combine", "CoreData"] {
+        assert!(
+            symbols.iter().any(|s| {
+                s.kind == SymbolKind::Import && s.signature.contains(&format!("import {fw}"))
+            }),
+            "expected import {fw} as Import symbol"
+        );
+    }
+}
+
+#[test]
+fn extracts_ios_macos_platform_gates() {
+    let code = r#"
+import Foundation
+
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
+
+@available(iOS 16, macOS 13, *)
+func newAPI() {}
+"#;
+
+    let symbols = extract_symbols(code, "App/Platform.swift");
+
+    assert!(
+        symbols.iter().any(|s| {
+            s.kind == SymbolKind::Import && s.name.contains("os(iOS)")
+        }),
+        "expected #if os(iOS) gate"
+    );
+    assert!(
+        symbols.iter().any(|s| {
+            s.kind == SymbolKind::Import && s.name.contains("os(macOS)")
+        }),
+        "expected #elseif os(macOS) gate (matched as #if os pattern? regex only matches #if)"
+    );
+    assert!(
+        symbols.iter().any(|s| {
+            s.kind == SymbolKind::Import && s.name.contains("canImport(SwiftUI)")
+        }),
+        "expected canImport(SwiftUI) gate"
+    );
+    assert!(
+        symbols.iter().any(|s| {
+            s.kind == SymbolKind::Import && s.name.starts_with("@available") && s.name.contains("iOS 16")
+        }),
+        "expected @available(iOS 16, macOS 13, *) gate"
+    );
+}
+

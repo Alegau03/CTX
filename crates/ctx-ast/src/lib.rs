@@ -45,6 +45,7 @@ enum SourceLanguage {
     JavaScript,
     TypeScript,
     Tsx,
+    Swift,
 }
 
 pub fn extract_symbols(code: &str, file_path: &str) -> Vec<Symbol> {
@@ -103,6 +104,9 @@ fn extract_symbols_tree_sitter(code: &str, file_path: &str) -> Option<Vec<RawSym
         SourceLanguage::Tsx => parser
             .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
             .ok(),
+        SourceLanguage::Swift => parser
+            .set_language(&tree_sitter_swift::LANGUAGE.into())
+            .ok(),
     };
 
     language_set?;
@@ -114,6 +118,7 @@ fn extract_symbols_tree_sitter(code: &str, file_path: &str) -> Option<Vec<RawSym
         SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Tsx => {
             extract_javascript_symbols(code, &tree, file_path)
         }
+        SourceLanguage::Swift => extract_swift_symbols(code, &tree, file_path),
     })
 }
 
@@ -607,6 +612,8 @@ fn source_language_for_file(file_path: &str) -> Option<SourceLanguage> {
         || file_path.ends_with(".cjs")
     {
         Some(SourceLanguage::JavaScript)
+    } else if file_path.ends_with(".swift") {
+        Some(SourceLanguage::Swift)
     } else {
         None
     }
@@ -688,4 +695,139 @@ fn line_of_byte(code: &str, byte_idx: usize) -> usize {
         .filter(|b| *b == b'\n')
         .count()
         + 1
+}
+
+// ─── Swift / iOS / macOS symbol extraction ───────────────────────────────────
+
+fn extract_swift_symbols(code: &str, tree: &Tree, file_path: &str) -> Vec<RawSymbol> {
+    let mut symbols = Vec::new();
+    let root = tree.root_node();
+    let mut stack = vec![root];
+
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            // class / struct / enum / actor / extension — distinguished by declaration_kind field
+            "class_declaration" => {
+                if let Some(sym) = extract_swift_class_like(code, file_path, node) {
+                    symbols.push(sym);
+                }
+            }
+
+            // protocol Foo {}
+            "protocol_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // Free functions — methods are walked under class bodies as well
+            "function_declaration" | "protocol_function_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    let kind = if is_swift_test_name(&name) {
+                        SymbolKind::Test
+                    } else {
+                        SymbolKind::Function
+                    };
+                    symbols.push(raw_symbol(file_path, &name, kind, &signature, node));
+                }
+            }
+
+            // init / deinit
+            "init_declaration" => {
+                let signature = first_line(node_text(code, node));
+                symbols.push(raw_symbol(file_path, "init", SymbolKind::Function, &signature, node));
+            }
+            "deinit_declaration" => {
+                let signature = first_line(node_text(code, node));
+                symbols.push(raw_symbol(file_path, "deinit", SymbolKind::Function, &signature, node));
+            }
+
+            // import Foundation
+            "import_declaration" => {
+                let import = first_line(node_text(code, node));
+                symbols.push(raw_symbol(file_path, &import, SymbolKind::Import, &import, node));
+            }
+
+            _ => {}
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    // Apple platform conditional compilation — #if os(iOS), #if os(macOS), etc.
+    extract_swift_platform_refs(code, file_path, &mut symbols);
+
+    symbols
+}
+
+/// Extract a `class_declaration` node (which covers class/struct/enum/actor/extension).
+fn extract_swift_class_like(code: &str, file_path: &str, node: Node<'_>) -> Option<RawSymbol> {
+    let name_node = node.child_by_field_name("name")?;
+    let name = node_text(code, name_node);
+    let signature = first_line(node_text(code, node));
+    Some(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node))
+}
+
+/// Swift test convention: XCTest methods start with `test`, Swift Testing uses `@Test` attribute.
+fn is_swift_test_name(name: &str) -> bool {
+    name.starts_with("test")
+}
+
+/// Extract `#if os(iOS)`, `#if os(macOS)`, `#if os(watchOS)`, `#if os(tvOS)`,
+/// `#if os(visionOS)`, and `@available(iOS 14, *)` style platform gates as Import symbols.
+fn extract_swift_platform_refs(code: &str, file_path: &str, symbols: &mut Vec<RawSymbol>) {
+    let os_re = Regex::new(r"#(?:if|elseif)\s+(?:!\s*)?(?:os|canImport|targetEnvironment)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)").expect("regex");
+    let avail_re = Regex::new(r"@available\s*\(\s*([^)]{1,120})\)").expect("regex");
+
+    let mut seen = std::collections::HashSet::new();
+    for cap in os_re.captures_iter(code) {
+        let full = cap.get(0).map(|m| m.as_str()).unwrap_or_default().trim().to_string();
+        let start = cap.get(0).map(|m| m.start()).unwrap_or(0);
+        let end = cap.get(0).map(|m| m.end()).unwrap_or(0);
+        if !seen.insert(full.clone()) {
+            continue;
+        }
+        let line = line_of_byte(code, start);
+        symbols.push(RawSymbol {
+            symbol: Symbol {
+                file_path: file_path.to_string(),
+                name: full.clone(),
+                kind: SymbolKind::Import,
+                signature: full,
+            },
+            start_byte: start,
+            end_byte: end,
+            start_line: line,
+            end_line: line,
+        });
+    }
+
+    for cap in avail_re.captures_iter(code) {
+        let full = cap.get(0).map(|m| m.as_str()).unwrap_or_default().trim().to_string();
+        let start = cap.get(0).map(|m| m.start()).unwrap_or(0);
+        let end = cap.get(0).map(|m| m.end()).unwrap_or(0);
+        if !seen.insert(full.clone()) {
+            continue;
+        }
+        let line = line_of_byte(code, start);
+        symbols.push(RawSymbol {
+            symbol: Symbol {
+                file_path: file_path.to_string(),
+                name: full.clone(),
+                kind: SymbolKind::Import,
+                signature: full,
+            },
+            start_byte: start,
+            end_byte: end,
+            start_line: line,
+            end_line: line,
+        });
+    }
 }
