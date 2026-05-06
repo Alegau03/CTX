@@ -32,7 +32,7 @@
 
 | Install + Bootstrap | Planning + Packing | Read Cache + Dashboard |
 |---|---|---|
-| `GIF placeholder` | `GIF placeholder` | `GIF placeholder` |
+| ![Install + Bootstrap](docs/assets/gif1.gif) | ![Planning + Packing](docs/assets/gif2.gif) | ![Read Cache + Dashboard](docs/assets/gif3.gif) |
 | Install `ctx`, run `ctx init`, `ctx index`, `ctx opencode install`, then open OpenCode. | Build a plan, pack the smallest useful context, and compare broad vs packed token cost. | Re-read files through `digest` mode and watch live savings in the right sidebar. |
 
 ## Contents
