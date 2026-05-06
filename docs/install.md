@@ -7,7 +7,7 @@ CTX is distributed as a local CLI named `ctx`. The CLI bootstraps the runtime, i
 ### Cargo
 
 ```bash
-cargo install ctx
+cargo install ctx-cli
 ```
 
 ### One-Line Installer
@@ -67,7 +67,7 @@ What it does:
 ### Cargo
 
 ```bash
-cargo install ctx --force
+cargo install ctx-cli --force
 ```
 
 ### Installer Script

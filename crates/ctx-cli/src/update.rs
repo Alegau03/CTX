@@ -42,7 +42,7 @@ impl UpdateChannel {
     fn update_command(self) -> &'static str {
         match self {
             Self::Installer => INSTALLER_UPDATE_COMMAND,
-            Self::Cargo => "cargo install ctx --force",
+            Self::Cargo => "cargo install ctx-cli --force",
             Self::Npm => "npm update -g @alegau/ctx-bin",
             Self::Brew => "brew upgrade ctx",
         }

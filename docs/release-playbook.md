@@ -74,7 +74,7 @@ ctx doctor
 Alternative channels:
 
 ```bash
-cargo install ctx
+cargo install ctx-cli
 npm i -g @alegau/ctx-bin
 brew tap Alegau03/ctx
 brew install ctx
@@ -98,7 +98,7 @@ ctx update
 Channel-specific fallbacks:
 
 ```bash
-cargo install ctx --force
+cargo install ctx-cli --force
 curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
 npm update -g @alegau/ctx-bin
 brew upgrade ctx

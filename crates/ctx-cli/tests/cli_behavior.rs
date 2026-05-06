@@ -202,7 +202,7 @@ fn update_without_detection_falls_back_to_guided_commands() {
         .assert()
         .success()
         .stdout(predicate::str::contains("channel: unknown"))
-        .stdout(predicate::str::contains("cargo install ctx --force"))
+        .stdout(predicate::str::contains("cargo install ctx-cli --force"))
         .stdout(predicate::str::contains("npm update -g @alegau/ctx-bin"))
         .stdout(predicate::str::contains("brew upgrade ctx"))
         .stdout(predicate::str::contains("curl -fsSL"));

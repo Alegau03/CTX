@@ -32,7 +32,7 @@ declare -a DEFAULT_CRATES=(
   "ctx-pack"
   "ctx-core"
   "ctx-mcp"
-  "ctx"
+  "ctx-cli"
 )
 
 if [[ $# -gt 0 ]]; then

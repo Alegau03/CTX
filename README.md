@@ -77,7 +77,7 @@ Coding agents usually waste tokens on things that are useful once but expensive 
 
 Install CTX with the channel that fits your workflow best:
 
-- `cargo install ctx`
+- `cargo install ctx-cli`
 - one-line installer script
 - GitHub Release archives
 - `npm i -g @alegau/ctx-bin`
@@ -87,7 +87,7 @@ Update paths:
 
 - `ctx update`
 - `ctx update --check`
-- `cargo install ctx --force`
+- `cargo install ctx-cli --force`
 - rerun the installer script
 - `npm update -g @alegau/ctx-bin`
 - `brew upgrade ctx`
@@ -95,7 +95,7 @@ Update paths:
 ### Cargo
 
 ```bash
-cargo install ctx
+cargo install ctx-cli
 ```
 
 ### One-Line Installer
@@ -142,7 +142,7 @@ ctx update
 How `ctx update` behaves:
 
 - installer-based installs: reruns the official installer path
-- Cargo installs: prints `cargo install ctx --force`
+- Cargo installs: prints `cargo install ctx-cli --force`
 - npm installs: prints `npm update -g @alegau/ctx-bin`
 - Homebrew installs: prints `brew upgrade ctx`
 - ambiguous installs: prints all supported update commands without guessing
