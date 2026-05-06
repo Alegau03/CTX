@@ -280,7 +280,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctx"
+name = "ctx-ast"
+version = "0.2.4"
+dependencies = [
+ "regex",
+ "serde",
+ "tree-sitter",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
+name = "ctx-cli"
 version = "0.2.4"
 dependencies = [
  "anyhow",
@@ -295,19 +308,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
-]
-
-[[package]]
-name = "ctx-ast"
-version = "0.2.4"
-dependencies = [
- "regex",
- "serde",
- "tree-sitter",
- "tree-sitter-javascript",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-typescript",
 ]
 
 [[package]]

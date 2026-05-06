@@ -40,9 +40,9 @@ Use CTX in this order in a real repository:
 Recommended public install paths:
 
 ```bash
-cargo install ctx
+cargo install ctx-cli
 curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
-npm i -g ctx-bin
+npm i -g @alegau/ctx-bin
 brew tap Alegau03/ctx && brew install ctx
 ```
 
