@@ -17,7 +17,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 license = "MIT"
 authors = ["CTX contributors"]
@@ -29,18 +29,18 @@ anyhow = "1.0"
 assert_cmd = "2.0"
 camino = "1.1"
 clap = { version = "4.5", features = ["derive"] }
-ctx-ast = { path = "crates/ctx-ast", version = "0.2.2" }
-ctx-config = { path = "crates/ctx-config", version = "0.2.2" }
-ctx-core = { path = "crates/ctx-core", version = "0.2.2" }
-ctx-graph = { path = "crates/ctx-graph", version = "0.2.2" }
-ctx-hooks = { path = "crates/ctx-hooks", version = "0.2.2" }
-ctx-intake = { path = "crates/ctx-intake", version = "0.2.2" }
-ctx-mcp = { path = "crates/ctx-mcp", version = "0.2.2" }
-ctx-pack = { path = "crates/ctx-pack", version = "0.2.2" }
-ctx-prune = { path = "crates/ctx-prune", version = "0.2.2" }
-ctx-semantic = { path = "crates/ctx-semantic", version = "0.2.2" }
-ctx-telemetry = { path = "crates/ctx-telemetry", version = "0.2.2" }
-ctx-token = { path = "crates/ctx-token", version = "0.2.2" }
+ctx-ast = { path = "crates/ctx-ast", version = "0.2.3" }
+ctx-config = { path = "crates/ctx-config", version = "0.2.3" }
+ctx-core = { path = "crates/ctx-core", version = "0.2.3" }
+ctx-graph = { path = "crates/ctx-graph", version = "0.2.3" }
+ctx-hooks = { path = "crates/ctx-hooks", version = "0.2.3" }
+ctx-intake = { path = "crates/ctx-intake", version = "0.2.3" }
+ctx-mcp = { path = "crates/ctx-mcp", version = "0.2.3" }
+ctx-pack = { path = "crates/ctx-pack", version = "0.2.3" }
+ctx-prune = { path = "crates/ctx-prune", version = "0.2.3" }
+ctx-semantic = { path = "crates/ctx-semantic", version = "0.2.3" }
+ctx-telemetry = { path = "crates/ctx-telemetry", version = "0.2.3" }
+ctx-token = { path = "crates/ctx-token", version = "0.2.3" }
 predicates = "3.1"
 regex = "1.12"
 rusqlite = { version = "0.37", features = ["bundled", "modern_sqlite"] }

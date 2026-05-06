@@ -14,7 +14,7 @@ if [[ -z "$CARGO_BIN" ]]; then
 fi
 
 VERSION="${CTX_VERSION:-$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "([^"]+)"/\1/' || true)}"
-VERSION="${VERSION:-0.2.2}"
+VERSION="${VERSION:-0.2.3}"
 HOST_TARGET="$("$CARGO_BIN" -vV | awk '/host:/ { print $2 }')"
 DIST_DIR="${CTX_DIST_DIR:-$ROOT_DIR/dist}"
 MANIFEST_PATH="$DIST_DIR/release-manifest.json"
