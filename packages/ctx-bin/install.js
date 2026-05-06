@@ -10,10 +10,10 @@ const repoSlug = process.env.CTX_REPO_SLUG || "Alegau03/CTX";
 const version = process.env.CTX_VERSION || pkg.version;
 const installRoot = __dirname;
 const vendorDir = path.join(installRoot, "vendor");
-const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ctx-bin-"));
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "alegau-ctx-bin-"));
 
 function fail(message) {
-  console.error(`ctx-bin install error: ${message}`);
+  console.error(`@alegau/ctx-bin install error: ${message}`);
   process.exit(1);
 }
 
@@ -93,7 +93,7 @@ async function main() {
   const archivePath = path.join(tmpDir, archive);
   const sumsPath = path.join(tmpDir, "SHA256SUMS");
 
-  console.log(`ctx-bin: downloading ${archive}`);
+  console.log(`@alegau/ctx-bin: downloading ${archive}`);
   await download(`${baseUrl}/${archive}`, archivePath);
   await download(`${baseUrl}/SHA256SUMS`, sumsPath);
   verifyChecksum(archivePath, sumsPath);
@@ -108,7 +108,7 @@ async function main() {
   fs.copyFileSync(extractedBinary, targetBinary);
   if (process.platform !== "win32") fs.chmodSync(targetBinary, 0o755);
 
-  console.log(`ctx-bin: installed ${binaryName}`);
+  console.log(`@alegau/ctx-bin: installed ${binaryName}`);
 }
 
 function findBinary(root, binaryName) {

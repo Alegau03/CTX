@@ -80,7 +80,7 @@ Install CTX with the channel that fits your workflow best:
 - `cargo install ctx`
 - one-line installer script
 - GitHub Release archives
-- `npm i -g ctx-bin`
+- `npm i -g @alegau/ctx-bin`
 - `brew tap Alegau03/ctx && brew install ctx`
 
 Update paths:
@@ -89,7 +89,7 @@ Update paths:
 - `ctx update --check`
 - `cargo install ctx --force`
 - rerun the installer script
-- `npm update -g ctx-bin`
+- `npm update -g @alegau/ctx-bin`
 - `brew upgrade ctx`
 
 ### Cargo
@@ -107,7 +107,7 @@ curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.s
 ### npm
 
 ```bash
-npm i -g ctx-bin
+npm i -g @alegau/ctx-bin
 ```
 
 ### Homebrew
@@ -143,7 +143,7 @@ How `ctx update` behaves:
 
 - installer-based installs: reruns the official installer path
 - Cargo installs: prints `cargo install ctx --force`
-- npm installs: prints `npm update -g ctx-bin`
+- npm installs: prints `npm update -g @alegau/ctx-bin`
 - Homebrew installs: prints `brew upgrade ctx`
 - ambiguous installs: prints all supported update commands without guessing
 
@@ -153,16 +153,16 @@ Download the latest assets from [GitHub Releases](https://github.com/Alegau03/CT
 
 ```bash
 shasum -a 256 -c SHA256SUMS
-tar -xzf ctx-0.2.3-aarch64-apple-darwin.tar.gz
+tar -xzf ctx-0.2.4-aarch64-apple-darwin.tar.gz
 mkdir -p "$HOME/.local/bin"
-install -m 0755 ctx-0.2.3-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
+install -m 0755 ctx-0.2.4-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 If you prefer a system-wide install:
 
 ```bash
-sudo install -m 0755 ctx-0.2.3-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+sudo install -m 0755 ctx-0.2.4-aarch64-apple-darwin/ctx /usr/local/bin/ctx
 ```
 
 For the full install matrix, release verification notes, native update behavior, and distribution details, see [docs/install.md](docs/install.md).

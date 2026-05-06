@@ -203,7 +203,7 @@ fn update_without_detection_falls_back_to_guided_commands() {
         .success()
         .stdout(predicate::str::contains("channel: unknown"))
         .stdout(predicate::str::contains("cargo install ctx --force"))
-        .stdout(predicate::str::contains("npm update -g ctx-bin"))
+        .stdout(predicate::str::contains("npm update -g @alegau/ctx-bin"))
         .stdout(predicate::str::contains("brew upgrade ctx"))
         .stdout(predicate::str::contains("curl -fsSL"));
 }
@@ -1272,7 +1272,7 @@ fn release_verify_script_validates_packaged_artifact() {
 }
 
 #[test]
-fn release_version_references_target_v0_2_3() {
+fn release_version_references_target_v0_2_4() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let root_manifest = fs::read_to_string(root.join("Cargo.toml")).expect("root cargo manifest");
     let cli_manifest =
@@ -1284,12 +1284,12 @@ fn release_version_references_target_v0_2_3() {
         fs::read_to_string(root.join("scripts/release/build.sh")).expect("build script");
     let readme = fs::read_to_string(root.join("README.md")).expect("readme");
 
-    assert!(root_manifest.contains("version = \"0.2.3\""));
+    assert!(root_manifest.contains("version = \"0.2.4\""));
     assert!(cli_manifest.contains("version.workspace = true"));
-    assert!(npm_manifest.contains("\"version\": \"0.2.3\""));
-    assert!(formula.contains("v0.2.3"));
-    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.3}\""));
-    assert!(readme.contains("ctx-0.2.3-aarch64-apple-darwin.tar.gz"));
+    assert!(npm_manifest.contains("\"version\": \"0.2.4\""));
+    assert!(formula.contains("v0.2.4"));
+    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.4}\""));
+    assert!(readme.contains("ctx-0.2.4-aarch64-apple-darwin.tar.gz"));
 }
 
 #[test]

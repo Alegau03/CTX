@@ -75,7 +75,7 @@ Alternative channels:
 
 ```bash
 cargo install ctx
-npm i -g ctx-bin
+npm i -g @alegau/ctx-bin
 brew tap Alegau03/ctx
 brew install ctx
 ctx doctor
@@ -100,7 +100,7 @@ Channel-specific fallbacks:
 ```bash
 cargo install ctx --force
 curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.sh | sh
-npm update -g ctx-bin
+npm update -g @alegau/ctx-bin
 brew upgrade ctx
 ```
 

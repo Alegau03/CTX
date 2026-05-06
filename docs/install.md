@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.s
 ### npm
 
 ```bash
-npm i -g ctx-bin
+npm i -g @alegau/ctx-bin
 ```
 
 ### Homebrew
@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/Alegau03/CTX/main/scripts/install.s
 ### npm
 
 ```bash
-npm update -g ctx-bin
+npm update -g @alegau/ctx-bin
 ```
 
 ### Homebrew

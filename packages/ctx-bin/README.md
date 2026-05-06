@@ -1,11 +1,11 @@
-# ctx-bin
+# @alegau/ctx-bin
 
 Prebuilt CTX binary distribution for npm users.
 
 ## Install
 
 ```bash
-npm i -g ctx-bin
+npm i -g @alegau/ctx-bin
 ctx help
 ctx doctor
 ```
@@ -14,13 +14,13 @@ ctx doctor
 
 ```bash
 ctx update
-npm update -g ctx-bin
+npm update -g @alegau/ctx-bin
 ```
 
 `ctx update` detects npm-based installs when possible and prints the package-manager command that matches this channel. The canonical manual npm upgrade path remains:
 
 ```bash
-npm update -g ctx-bin
+npm update -g @alegau/ctx-bin
 ```
 
 The package downloads the matching GitHub Release artifact during `postinstall` instead of compiling Rust on the target machine.
