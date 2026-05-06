@@ -97,4 +97,4 @@ jobs:
 
       - name: Publish GitHub release
         shell: bash
-        run: scripts/release/publish-github-release.sh "$CTX_VERSION" dist
+        run: bash scripts/release/publish-github-release.sh "$CTX_VERSION" dist
