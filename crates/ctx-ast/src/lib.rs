@@ -45,6 +45,10 @@ enum SourceLanguage {
     JavaScript,
     TypeScript,
     Tsx,
+    C,
+    CHeader,
+    Cpp,
+    CppHeader,
 }
 
 pub fn extract_symbols(code: &str, file_path: &str) -> Vec<Symbol> {
@@ -103,6 +107,12 @@ fn extract_symbols_tree_sitter(code: &str, file_path: &str) -> Option<Vec<RawSym
         SourceLanguage::Tsx => parser
             .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
             .ok(),
+        SourceLanguage::C | SourceLanguage::CHeader => parser
+            .set_language(&tree_sitter_c::LANGUAGE.into())
+            .ok(),
+        SourceLanguage::Cpp | SourceLanguage::CppHeader => parser
+            .set_language(&tree_sitter_cpp::LANGUAGE.into())
+            .ok(),
     };
 
     language_set?;
@@ -113,6 +123,12 @@ fn extract_symbols_tree_sitter(code: &str, file_path: &str) -> Option<Vec<RawSym
         SourceLanguage::Python => extract_python_symbols(code, &tree, file_path),
         SourceLanguage::JavaScript | SourceLanguage::TypeScript | SourceLanguage::Tsx => {
             extract_javascript_symbols(code, &tree, file_path)
+        }
+        SourceLanguage::C | SourceLanguage::CHeader => {
+            extract_c_symbols(code, &tree, file_path)
+        }
+        SourceLanguage::Cpp | SourceLanguage::CppHeader => {
+            extract_cpp_symbols(code, &tree, file_path)
         }
     })
 }
@@ -607,6 +623,18 @@ fn source_language_for_file(file_path: &str) -> Option<SourceLanguage> {
         || file_path.ends_with(".cjs")
     {
         Some(SourceLanguage::JavaScript)
+    } else if file_path.ends_with(".c") {
+        Some(SourceLanguage::C)
+    } else if file_path.ends_with(".h") {
+        Some(SourceLanguage::CHeader)
+    } else if file_path.ends_with(".cpp")
+        || file_path.ends_with(".cc")
+        || file_path.ends_with(".cxx") {
+        Some(SourceLanguage::Cpp)
+    } else if file_path.ends_with(".hpp")
+        || file_path.ends_with(".hxx")
+        || file_path.ends_with(".hh") {
+        Some(SourceLanguage::CppHeader)
     } else {
         None
     }
@@ -688,4 +716,510 @@ fn line_of_byte(code: &str, byte_idx: usize) -> usize {
         .filter(|b| *b == b'\n')
         .count()
         + 1
+}
+
+// ─── C / Zephyr symbol extraction ────────────────────────────────────────────
+
+fn extract_c_symbols(code: &str, tree: &Tree, file_path: &str) -> Vec<RawSymbol> {
+    let mut symbols = Vec::new();
+    let root = tree.root_node();
+    let mut stack = vec![root];
+
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            // Regular C functions
+            "function_definition" => {
+                if let Some(declarator) = node.child_by_field_name("declarator") {
+                    if let Some(name) = find_function_name(code, declarator) {
+                        let signature = first_line(node_text(code, node));
+                        let kind = if name.starts_with("test_") || name.starts_with("Test") {
+                            SymbolKind::Test
+                        } else {
+                            SymbolKind::Function
+                        };
+                        symbols.push(raw_symbol(file_path, &name, kind, &signature, node));
+                    }
+                }
+                // Don't recurse into function bodies
+                continue;
+            }
+
+            // Structs
+            "struct_specifier" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // Enums
+            "enum_specifier" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // typedef — alias name is the last type_identifier
+            "type_definition" => {
+                let mut cursor = node.walk();
+                let type_ids: Vec<_> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "type_identifier")
+                    .collect();
+                if let Some(name_node) = type_ids.last() {
+                    let name = node_text(code, *name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // #include
+            "preproc_include" => {
+                let import = first_line(node_text(code, node));
+                symbols.push(raw_symbol(file_path, &import, SymbolKind::Import, &import, node));
+            }
+
+            // #define (simple constant macros)
+            "preproc_def" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Function, &signature, node));
+                }
+            }
+
+            // #define with parameters (function-like macros)
+            "preproc_function_def" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    let kind = if is_zephyr_kernel_macro(&name) {
+                        SymbolKind::Class
+                    } else {
+                        SymbolKind::Function
+                    };
+                    symbols.push(raw_symbol(file_path, &name, kind, &signature, node));
+                }
+            }
+
+            // RTOS macro calls — at file scope and inside function bodies
+            "expression_statement" | "declaration" | "call_expression" => {
+                if let Some(rtos_sym) = extract_rtos_macro_call(code, file_path, node) {
+                    symbols.push(rtos_sym);
+                }
+            }
+
+            _ => {}
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    // Extract CONFIG_* Kconfig references and DT_* devicetree lookups
+    // These appear anywhere in the file, not just at file scope
+    extract_kconfig_refs(code, file_path, &mut symbols);
+    extract_dt_refs(code, file_path, &mut symbols);
+    // Full-tree scan for RTOS calls inside function bodies
+    extract_rtos_calls_deep(code, tree, file_path, &mut symbols);
+
+    symbols
+}
+
+/// Recursively find the innermost identifier from a declarator node.
+/// Handles: foo, *foo, foo(...), (*foo)(...)
+fn find_function_name(code: &str, node: Node<'_>) -> Option<String> {
+    match node.kind() {
+        "identifier" => Some(node_text(code, node)),
+        "qualified_identifier" => {
+            let mut cursor = node.walk();
+            node.children(&mut cursor)
+                .filter(|c| c.kind() == "identifier")
+                .last()
+                .map(|n| node_text(code, n))
+        }
+        "function_declarator" | "pointer_declarator" | "parenthesized_declarator" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if let Some(name) = find_function_name(code, child) {
+                    return Some(name);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// RTOS kernel object definition macros — treated as type definitions.
+/// Covers Zephyr static kernel objects and FreeRTOS static allocation structs.
+fn is_zephyr_kernel_macro(name: &str) -> bool {
+    matches!(
+        name,
+        // Zephyr kernel objects
+        "K_THREAD_DEFINE"
+            | "K_SEM_DEFINE"
+            | "K_MUTEX_DEFINE"
+            | "K_FIFO_DEFINE"
+            | "K_LIFO_DEFINE"
+            | "K_QUEUE_DEFINE"
+            | "K_PIPE_DEFINE"
+            | "K_MSGQ_DEFINE"
+            | "K_MBOX_DEFINE"
+            | "K_TIMER_DEFINE"
+            | "K_MEM_SLAB_DEFINE"
+            | "K_HEAP_DEFINE"
+            | "K_STACK_DEFINE"
+            | "K_POLL_EVENT_DEFINE"
+            // FreeRTOS static allocation types used as global objects
+            | "StaticTask_t"
+            | "StaticQueue_t"
+            | "StaticSemaphore_t"
+            | "StaticTimer_t"
+            | "StaticEventGroup_t"
+            | "StaticStreamBuffer_t"
+    )
+}
+
+/// Extract RTOS macro calls (Zephyr devicetree/driver registration + FreeRTOS task/queue/semaphore creation).
+/// These appear as expression_statement or declaration at file scope.
+fn extract_rtos_macro_call(code: &str, file_path: &str, node: Node<'_>) -> Option<RawSymbol> {
+    let call = if node.kind() == "call_expression" {
+        node
+    } else {
+        let mut cursor = node.walk();
+        node.children(&mut cursor)
+            .find(|c| c.kind() == "call_expression")?
+    };
+
+    let fn_node = call.child_by_field_name("function")?;
+    let macro_name = node_text(code, fn_node);
+
+    // Zephyr devicetree and driver registration macros
+    let zephyr_macros = [
+        "DEVICE_DT_DEFINE",
+        "DEVICE_DT_INST_DEFINE",
+        "DEVICE_DEFINE",
+        "SYS_DEVICE_DEFINE",
+        "SYS_INIT",
+        "SHELL_CMD_REGISTER",
+        "SHELL_SUBCMD_SET_CREATE",
+        "SENSOR_DEVICE_DT_INST_DEFINE",
+        "UART_DEVICE_CONFIG_DEFINE",
+        "GPIO_DEVICE_INIT",
+        "PINCTRL_DT_INST_DEFINE",
+        "IRQ_CONNECT",
+        "DEVICE_DT_DEFINE_WITH_PM",
+    ];
+
+    // Zephyr kernel object instantiation calls (K_*_DEFINE)
+    let zephyr_kernel_macros = [
+        "K_THREAD_DEFINE",
+        "K_SEM_DEFINE",
+        "K_MUTEX_DEFINE",
+        "K_FIFO_DEFINE",
+        "K_LIFO_DEFINE",
+        "K_QUEUE_DEFINE",
+        "K_PIPE_DEFINE",
+        "K_MSGQ_DEFINE",
+        "K_MBOX_DEFINE",
+        "K_TIMER_DEFINE",
+        "K_MEM_SLAB_DEFINE",
+        "K_HEAP_DEFINE",
+        "K_STACK_DEFINE",
+        "K_POLL_EVENT_DEFINE",
+    ];
+
+    // FreeRTOS task, queue, semaphore, timer creation calls
+    let freertos_macros = [
+        "xTaskCreate",
+        "xTaskCreateStatic",
+        "xTaskCreatePinnedToCore",
+        "xTaskCreateStaticPinnedToCore",
+        "xQueueCreate",
+        "xQueueCreateStatic",
+        "xSemaphoreCreateBinary",
+        "xSemaphoreCreateBinaryStatic",
+        "xSemaphoreCreateMutex",
+        "xSemaphoreCreateMutexStatic",
+        "xSemaphoreCreateRecursiveMutex",
+        "xSemaphoreCreateRecursiveMutexStatic",
+        "xSemaphoreCreateCounting",
+        "xSemaphoreCreateCountingStatic",
+        "xTimerCreate",
+        "xTimerCreateStatic",
+        "xEventGroupCreate",
+        "xEventGroupCreateStatic",
+        "xStreamBufferCreate",
+        "xStreamBufferCreateStatic",
+        "xMessageBufferCreate",
+        "xMessageBufferCreateStatic",
+    ];
+
+    let is_rtos_macro = zephyr_macros.contains(&macro_name.as_str())
+        || zephyr_kernel_macros.contains(&macro_name.as_str())
+        || freertos_macros.contains(&macro_name.as_str());
+
+    if !is_rtos_macro {
+        return None;
+    }
+
+    let args = call.child_by_field_name("arguments")?;
+    let mut arg_cursor = args.walk();
+    let device_name = args
+        .named_children(&mut arg_cursor)
+        .find(|c| c.kind() != ",")
+        .map(|n| node_text(code, n))
+        .unwrap_or_default();
+    let signature = first_line(node_text(code, node));
+
+    Some(raw_symbol(
+        file_path,
+        &format!("{macro_name}({device_name})"),
+        SymbolKind::Class,
+        &signature,
+        node,
+    ))
+}
+
+// ─── C++ symbol extraction ────────────────────────────────────────────────────
+
+fn extract_cpp_symbols(code: &str, tree: &Tree, file_path: &str) -> Vec<RawSymbol> {
+    let mut symbols = Vec::new();
+    let root = tree.root_node();
+    let mut stack = vec![root];
+
+    while let Some(node) = stack.pop() {
+        match node.kind() {
+            // Free functions and methods
+            "function_definition" => {
+                if let Some(declarator) = node.child_by_field_name("declarator") {
+                    if let Some(name) = find_function_name(code, declarator) {
+                        let signature = first_line(node_text(code, node));
+                        let kind = if name.starts_with("test_") || name.starts_with("Test") {
+                            SymbolKind::Test
+                        } else {
+                            SymbolKind::Function
+                        };
+                        symbols.push(raw_symbol(file_path, &name, kind, &signature, node));
+                    }
+                }
+                continue;
+            }
+
+            // Classes and structs
+            "class_specifier" | "struct_specifier" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // Enums and enum classes
+            "enum_specifier" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // Templates
+            "template_declaration" => {
+                // Extract the inner class or function name
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    match child.kind() {
+                        "class_specifier" | "struct_specifier" => {
+                            if let Some(name_node) = child.child_by_field_name("name") {
+                                let name = node_text(code, name_node);
+                                let signature = first_line(node_text(code, node));
+                                symbols.push(raw_symbol(
+                                    file_path,
+                                    &format!("{name}<>"),
+                                    SymbolKind::Class,
+                                    &signature,
+                                    node,
+                                ));
+                            }
+                        }
+                        "function_definition" => {
+                            if let Some(declarator) = child.child_by_field_name("declarator") {
+                                if let Some(name) = find_function_name(code, declarator) {
+                                    let signature = first_line(node_text(code, node));
+                                    symbols.push(raw_symbol(
+                                        file_path,
+                                        &format!("{name}<>"),
+                                        SymbolKind::Function,
+                                        &signature,
+                                        node,
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                continue;
+            }
+
+            // typedef
+            "type_definition" => {
+                let mut cursor = node.walk();
+                let type_ids: Vec<_> = node
+                    .children(&mut cursor)
+                    .filter(|c| c.kind() == "type_identifier")
+                    .collect();
+                if let Some(name_node) = type_ids.last() {
+                    let name = node_text(code, *name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Class, &signature, node));
+                }
+            }
+
+            // Namespaces — index the name for context, don't skip children
+            "namespace_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Module, &signature, node));
+                }
+            }
+
+            // #include
+            "preproc_include" => {
+                let import = first_line(node_text(code, node));
+                symbols.push(raw_symbol(file_path, &import, SymbolKind::Import, &import, node));
+            }
+
+            // #define
+            "preproc_def" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Function, &signature, node));
+                }
+            }
+
+            // #define with params
+            "preproc_function_def" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(code, name_node);
+                    let signature = first_line(node_text(code, node));
+                    symbols.push(raw_symbol(file_path, &name, SymbolKind::Function, &signature, node));
+                }
+            }
+
+            _ => {}
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    // Extract CONFIG_* Kconfig references and DT_* devicetree lookups
+    extract_kconfig_refs(code, file_path, &mut symbols);
+    extract_dt_refs(code, file_path, &mut symbols);
+
+    symbols
+}
+
+// ─── Zephyr Kconfig and Devicetree reference extraction ──────────────────────
+
+/// Extract CONFIG_* Kconfig symbol references from preprocessor directives
+/// and identifier usage throughout the file.
+fn extract_kconfig_refs(code: &str, file_path: &str, symbols: &mut Vec<RawSymbol>) {
+    use regex::Regex;
+    let re = Regex::new(r"\bCONFIG_[A-Z0-9_]+\b").expect("regex");
+
+    let mut seen = std::collections::HashSet::new();
+    for m in re.find_iter(code) {
+        let name = m.as_str().to_string();
+        if seen.contains(&name) {
+            continue;
+        }
+        seen.insert(name.clone());
+        let line = line_of_byte(code, m.start());
+        symbols.push(RawSymbol {
+            symbol: Symbol {
+                file_path: file_path.to_string(),
+                name: name.clone(),
+                kind: SymbolKind::Import,
+                signature: name,
+            },
+            start_byte: m.start(),
+            end_byte: m.end(),
+            start_line: line,
+            end_line: line,
+        });
+    }
+}
+
+/// Extract DT_ALIAS, DT_NODELABEL, DT_PATH, DT_CHOSEN, DT_INST references.
+/// These are devicetree lookup macros that identify hardware nodes.
+fn extract_dt_refs(code: &str, file_path: &str, symbols: &mut Vec<RawSymbol>) {
+    use regex::Regex;
+    // Match DT_ALIAS(foo), DT_NODELABEL(bar), DT_PATH(...), DT_CHOSEN(...), DT_INST(n, compat)
+    let re = Regex::new(
+        r"\b(DT_ALIAS|DT_NODELABEL|DT_PATH|DT_CHOSEN|DT_INST|DT_PARENT|DT_CHILD)\s*\(([^)]{0,80})\)"
+    ).expect("regex");
+
+    let mut seen = std::collections::HashSet::new();
+    for cap in re.captures_iter(code) {
+        let full = cap.get(0).map(|m| m.as_str()).unwrap_or_default();
+        let start = cap.get(0).map(|m| m.start()).unwrap_or(0);
+        let end   = cap.get(0).map(|m| m.end()).unwrap_or(0);
+        let name  = full.trim().to_string();
+
+        if seen.contains(&name) {
+            continue;
+        }
+        seen.insert(name.clone());
+
+        let line = line_of_byte(code, start);
+        symbols.push(RawSymbol {
+            symbol: Symbol {
+                file_path: file_path.to_string(),
+                name: name.clone(),
+                kind: SymbolKind::Import,
+                signature: name,
+            },
+            start_byte: start,
+            end_byte: end,
+            start_line: line,
+            end_line: line,
+        });
+    }
+}
+
+
+/// Full-tree scan for RTOS macro calls inside function bodies.
+/// The main walker skips function body children with `continue`,
+/// so this does a separate pass over the entire tree.
+fn extract_rtos_calls_deep(code: &str, tree: &Tree, file_path: &str, symbols: &mut Vec<RawSymbol>) {
+    let mut seen = std::collections::HashSet::new();
+    let root = tree.root_node();
+    let mut stack = vec![root];
+
+    while let Some(node) = stack.pop() {
+        if node.kind() == "call_expression" {
+            if let Some(sym) = extract_rtos_macro_call(code, file_path, node) {
+                if seen.insert(sym.symbol.name.clone()) {
+                    symbols.push(sym);
+                }
+            }
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
 }

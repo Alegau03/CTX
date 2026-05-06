@@ -24,6 +24,7 @@ use update::{UpdateArgs, run_update};
 #[derive(Debug, Parser)]
 #[command(
     name = "ctx",
+    version = "0.2.4",
     about = "Context Runtime Engine for Coding Agents",
     disable_help_subcommand = true
 )]
