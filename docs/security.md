@@ -47,6 +47,19 @@ Expected behavior:
 attachment .env matches sensitive file patterns and was blocked
 ```
 
+Default directory ignores also skip common build, cache, virtualenv, editor, and worktree folders such as `.venv`, `__pycache__`, `.pytest_cache`, `.vscode`, and `.claude`.
+
+## WSL Performance Tip
+
+On WSL, lots of small filesystem writes can make graph indexing noticeably slower than on native Linux paths. If you want a much faster ephemeral graph store, point the graph database at the RAM-backed `/dev/shm` filesystem:
+
+```toml
+[graph]
+store = "/dev/shm/my-project-graph.db"
+```
+
+This is often much faster on WSL, but the graph DB is volatile and will be lost on reboot.
+
 ## MCP Boundary
 
 OpenCode integration uses local stdio MCP:

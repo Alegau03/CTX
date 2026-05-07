@@ -35,4 +35,4 @@ local_stats_enabled = true
 audit_include_exclude = true
 exclude_sensitive_files = true
 sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
-ignored_dirs = [".git", ".ctx", "target", "node_modules", "build", "dist", "artifacts", ".next", ".cache", "coverage"]
+ignored_dirs = [".git", ".ctx", ".venv", "venv", "env", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache", ".tox", ".nox", ".idea", ".vscode", ".claude", ".superpowers", ".eggs", "htmlcov", "target", "node_modules", "build", "dist", "artifacts", ".next", ".cache", "coverage"]
