@@ -93,16 +93,19 @@ fn security_defaults_are_local_first_and_telemetry_opt_in() {
     assert!(cfg.security.local_stats_enabled);
     assert!(cfg.security.audit_include_exclude);
     assert!(cfg.security.exclude_sensitive_files);
-    for expected in [
-        "node_modules",
-        ".claude",
-        ".venv",
-        "__pycache__",
-        ".vscode",
-    ] {
+    for expected in ["node_modules", ".claude", ".venv", "__pycache__", ".vscode"] {
         assert!(
             cfg.security.ignored_dirs.iter().any(|dir| dir == expected),
             "missing default ignored dir: {expected}"
+        );
+    }
+    for expected in ["package-lock.json", "*.log", ".coverage.*"] {
+        assert!(
+            cfg.security
+                .ignored_files
+                .iter()
+                .any(|pattern| pattern == expected),
+            "missing default ignored file pattern: {expected}"
         );
     }
 }

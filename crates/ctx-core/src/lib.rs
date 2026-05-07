@@ -1,5 +1,6 @@
 mod command_run;
 mod index_cache;
+mod path_filters;
 mod read_cache;
 
 use std::collections::{HashMap, HashSet};
@@ -32,6 +33,7 @@ use index_cache::{
     load_index_cache_state, load_latest_index_cache_report, save_index_cache_state,
     write_index_cache_report,
 };
+use path_filters::{PathMatcher, SegmentMatcher};
 use read_cache::run_cached_read;
 pub use read_cache::{ReadCacheReport, ReadMode};
 
@@ -201,6 +203,7 @@ pub fn run_read(repo_root: &Path, path: &str, mode: ReadMode) -> Result<ReadCach
         mode,
         cfg.security.exclude_sensitive_files,
         &cfg.security.sensitive_patterns,
+        &cfg.security.ignored_files,
     )
 }
 
@@ -212,10 +215,12 @@ pub fn run_pack(
 ) -> Result<PackResult> {
     let cfg = load_or_default_config(repo_root)?;
     let max_lines = cfg.pruning.max_log_lines;
+    let ignored_files = PathMatcher::exact_or_glob(&cfg.security.ignored_files);
+    let sensitive_files = PathMatcher::contains_or_glob(&cfg.security.sensitive_patterns);
 
     let root_cause = if let Some(path) = attach {
         if cfg.security.exclude_sensitive_files
-            && is_sensitive_path(path, &cfg.security.sensitive_patterns)
+            && sensitive_files.matches_path(Some(repo_root), path)
         {
             audit_privacy_decision(
                 repo_root,
@@ -227,6 +232,20 @@ pub fn run_pack(
             );
             bail!(
                 "attachment {} matches sensitive file patterns and was blocked",
+                path.display()
+            );
+        }
+        if ignored_files.matches_path(Some(repo_root), path) {
+            audit_privacy_decision(
+                repo_root,
+                &cfg,
+                "excluded",
+                Some(path),
+                "ignored_file_pattern",
+                "blocked ignored attachment before packing",
+            );
+            bail!(
+                "attachment {} matches ignored file patterns and was blocked",
                 path.display()
             );
         }
@@ -363,6 +382,9 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     } else {
         include_paths.iter().map(|p| repo_root.join(p)).collect()
     };
+    let ignored_dirs = SegmentMatcher::new(&cfg.security.ignored_dirs);
+    let ignored_files = PathMatcher::exact_or_glob(&cfg.security.ignored_files);
+    let sensitive_files = PathMatcher::contains_or_glob(&cfg.security.sensitive_patterns);
 
     let mut indexed = 0usize;
     let mut indexed_files = Vec::new();
@@ -372,7 +394,7 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     for root in roots {
         for entry in WalkDir::new(root)
             .into_iter()
-            .filter_entry(|e| !is_ignored_dir(e.path(), &cfg.security.ignored_dirs))
+            .filter_entry(|e| !ignored_dirs.matches_path(e.path()))
             .filter_map(std::result::Result::ok)
             .filter(|e| e.file_type().is_file())
         {
@@ -380,8 +402,19 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
             if !is_code_file(path) {
                 continue;
             }
+            if ignored_files.matches_path(Some(repo_root), path) {
+                audit_privacy_decision(
+                    repo_root,
+                    &cfg,
+                    "excluded",
+                    Some(path),
+                    "ignored_file_pattern",
+                    "skipped ignored file during indexing",
+                );
+                continue;
+            }
             if cfg.security.exclude_sensitive_files
-                && is_sensitive_path(path, &cfg.security.sensitive_patterns)
+                && sensitive_files.matches_path(Some(repo_root), path)
             {
                 audit_privacy_decision(
                     repo_root,
@@ -1573,16 +1606,6 @@ fn answer_success_rate(answer_path: Option<&Path>, checklist: &[String]) -> Resu
     Ok((matched as f64 / checklist.len() as f64).clamp(0.0, 1.0))
 }
 
-fn is_ignored_dir(path: &Path, ignored_dirs: &[String]) -> bool {
-    path.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .map(|name| ignored_dirs.iter().any(|ignored| ignored == name))
-            .unwrap_or(false)
-    })
-}
-
 fn is_code_file(path: &Path) -> bool {
     let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
         return false;
@@ -1609,13 +1632,6 @@ fn is_code_file(path: &Path) -> bool {
             | "h"
             | "hpp"
     )
-}
-
-fn is_sensitive_path(path: &Path, patterns: &[String]) -> bool {
-    let lower = path.to_string_lossy().to_lowercase();
-    patterns
-        .iter()
-        .any(|pattern| lower.contains(&pattern.to_lowercase()))
 }
 
 fn audit_privacy_decision(

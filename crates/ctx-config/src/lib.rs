@@ -204,6 +204,7 @@ pub struct SecurityConfig {
     pub exclude_sensitive_files: bool,
     pub sensitive_patterns: Vec<String>,
     pub ignored_dirs: Vec<String>,
+    pub ignored_files: Vec<String>,
 }
 
 impl Default for SecurityConfig {
@@ -249,6 +250,22 @@ impl Default for SecurityConfig {
                 ".next".to_string(),
                 ".cache".to_string(),
                 "coverage".to_string(),
+            ],
+            ignored_files: vec![
+                "*.db".to_string(),
+                "*.sqlite".to_string(),
+                "*.sqlite3".to_string(),
+                "*.pyc".to_string(),
+                "*.pyo".to_string(),
+                "*.pem".to_string(),
+                "*.log".to_string(),
+                ".env".to_string(),
+                "*.env".to_string(),
+                ".coverage".to_string(),
+                ".coverage.*".to_string(),
+                ".DS_Store".to_string(),
+                "Thumbs.db".to_string(),
+                "package-lock.json".to_string(),
             ],
         }
     }

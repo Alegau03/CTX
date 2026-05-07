@@ -1,9 +1,65 @@
 use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 use ctx_core::{init_repo, run_gain, run_graph_query, run_index, run_pack};
 use ctx_graph::GraphStore;
 use tempfile::tempdir;
+
+fn write_test_config(repo_root: &Path, ignored_dirs: &[&str], ignored_files: &[&str]) {
+    let ignored_dirs = ignored_dirs
+        .iter()
+        .map(|pattern| format!("\"{pattern}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let ignored_files = ignored_files
+        .iter()
+        .map(|pattern| format!("\"{pattern}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let config = format!(
+        r#"[general]
+repo_root = "."
+default_budget = 6000
+agent = "opencode"
+
+[pruning]
+collapse_success_logs = true
+keep_imports = true
+keep_public_signatures = true
+max_log_lines = 200
+
+[semantic]
+enabled = true
+backend = "onnx"
+model = "local-mini-embed"
+max_chunks = 64
+allow_fallback = true
+
+[graph]
+enabled = true
+store = ".ctx/graph.db"
+index_tests = true
+index_docs = true
+
+[mcp]
+enabled = true
+port = 8765
+
+[security]
+local_only = true
+remote_upload_enabled = false
+anonymous_telemetry_enabled = false
+local_stats_enabled = true
+audit_include_exclude = true
+exclude_sensitive_files = true
+sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
+ignored_dirs = [{ignored_dirs}]
+ignored_files = [{ignored_files}]
+"#
+    );
+    fs::write(repo_root.join(".ctx/config.toml"), config).expect("write config");
+}
 
 #[test]
 fn init_repo_creates_config_and_graph_db() {
@@ -177,6 +233,76 @@ fn run_index_skips_sensitive_code_files_and_audits_decision() {
 }
 
 #[test]
+fn run_index_skips_files_matching_ignored_file_patterns() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    write_test_config(
+        tmp.path(),
+        &[".git", ".ctx"],
+        &["package-lock.json", "docs/*.md"],
+    );
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir src");
+    fs::create_dir_all(tmp.path().join("docs")).expect("mkdir docs");
+    fs::write(
+        tmp.path().join("src/auth.ts"),
+        "export function refreshSession() { return true; }\n",
+    )
+    .expect("write auth");
+    fs::write(
+        tmp.path().join("docs/runbook.md"),
+        "# Runbook\nrotate the session token\n",
+    )
+    .expect("write doc");
+    fs::write(
+        tmp.path().join("package-lock.json"),
+        "{\n  \"name\": \"pulseboard-web-demo\"\n}\n",
+    )
+    .expect("write lockfile");
+
+    let count = run_index(tmp.path(), &[]).expect("index");
+    assert_eq!(count, 1);
+
+    let auth_matches = run_graph_query(tmp.path(), "auth").expect("auth query");
+    assert!(auth_matches.iter().any(|m| m.ends_with("src/auth.ts")));
+
+    let doc_matches = run_graph_query(tmp.path(), "runbook").expect("doc query");
+    assert!(doc_matches.is_empty());
+
+    let lockfile_matches = run_graph_query(tmp.path(), "package-lock").expect("lock query");
+    assert!(lockfile_matches.is_empty());
+
+    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit readable");
+    assert!(audit.contains("\"reason\":\"ignored_file_pattern\""));
+    assert!(audit.contains("docs/runbook.md"));
+    assert!(audit.contains("package-lock.json"));
+}
+
+#[test]
+fn run_index_skips_directories_matching_globbed_component_patterns() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    write_test_config(tmp.path(), &[".git", ".ctx", "*.egg-info"], &[]);
+    fs::create_dir_all(tmp.path().join("src")).expect("mkdir src");
+    fs::create_dir_all(tmp.path().join("fixtures/demo.egg-info")).expect("mkdir egg-info");
+    fs::write(
+        tmp.path().join("src/auth.py"),
+        "def validate_refresh_token():\n    return True\n",
+    )
+    .expect("write auth");
+    fs::write(
+        tmp.path().join("fixtures/demo.egg-info/metadata.py"),
+        "def generated_metadata():\n    return 'ignore me'\n",
+    )
+    .expect("write metadata");
+
+    let count = run_index(tmp.path(), &[]).expect("index");
+    assert_eq!(count, 1);
+
+    let matches = run_graph_query(tmp.path(), "generated_metadata").expect("query");
+    assert!(matches.is_empty());
+}
+
+#[test]
 fn run_pack_appends_audit_log_entry() {
     let tmp = tempdir().expect("tempdir");
     init_repo(tmp.path()).expect("init");
@@ -188,6 +314,25 @@ fn run_pack_appends_audit_log_entry() {
 
     assert!(audit.contains("run_pack"));
     assert!(audit.contains("query=\"fix auth\""));
+}
+
+#[test]
+fn run_pack_blocks_attachments_matching_ignored_file_patterns() {
+    let tmp = tempdir().expect("tempdir");
+    init_repo(tmp.path()).expect("init");
+    write_test_config(tmp.path(), &[".git", ".ctx"], &["*.log"]);
+    let attach = tmp.path().join("failure.log");
+    fs::write(&attach, "ERROR token decode failed").expect("write");
+
+    let result = run_pack(tmp.path(), "fix auth", Some(100), Some(&attach));
+    assert!(result.is_err());
+
+    let err = result.expect_err("expected ignored file block").to_string();
+    assert!(err.contains("ignored file patterns"));
+
+    let audit = fs::read_to_string(tmp.path().join(".ctx/audit.log")).expect("audit readable");
+    assert!(audit.contains("\"reason\":\"ignored_file_pattern\""));
+    assert!(audit.contains("failure.log"));
 }
 
 #[test]

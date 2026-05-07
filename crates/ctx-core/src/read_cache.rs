@@ -9,6 +9,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use ctx_ast::{SymbolKind, extract_symbols};
 use serde::{Deserialize, Serialize};
 
+use crate::path_filters::PathMatcher;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadMode {
@@ -84,11 +86,20 @@ pub fn run_cached_read(
     mode: ReadMode,
     exclude_sensitive_files: bool,
     sensitive_patterns: &[String],
+    ignored_files: &[String],
 ) -> Result<ReadCacheReport> {
     let target = resolve_repo_file(repo_root, raw_path)?;
-    if exclude_sensitive_files && is_sensitive_path(&target, sensitive_patterns) {
+    let ignored_files = PathMatcher::exact_or_glob(ignored_files);
+    let sensitive_files = PathMatcher::contains_or_glob(sensitive_patterns);
+    if exclude_sensitive_files && sensitive_files.matches_path(Some(repo_root), &target) {
         bail!(
             "read path {} matches sensitive file patterns and was blocked",
+            target.display()
+        );
+    }
+    if ignored_files.matches_path(Some(repo_root), &target) {
+        bail!(
+            "read path {} matches ignored file patterns and was blocked",
             target.display()
         );
     }
@@ -277,11 +288,4 @@ fn symbol_kind_label(kind: &SymbolKind) -> &'static str {
         SymbolKind::Test => "test",
         SymbolKind::Import => "import",
     }
-}
-
-fn is_sensitive_path(path: &Path, patterns: &[String]) -> bool {
-    let lower = path.to_string_lossy().to_lowercase();
-    patterns
-        .iter()
-        .any(|pattern| lower.contains(&pattern.to_lowercase()))
 }

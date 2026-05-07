@@ -35,6 +35,12 @@ Default patterns:
 sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
 ```
 
+Default file ignores skip common local artifacts and generated noise:
+
+```toml
+ignored_files = ["*.db", "*.sqlite", "*.sqlite3", "*.pyc", "*.pyo", "*.pem", "*.log", ".env", "*.env", ".coverage", ".coverage.*", ".DS_Store", "Thumbs.db", "package-lock.json"]
+```
+
 Example:
 
 ```bash
@@ -47,7 +53,7 @@ Expected behavior:
 attachment .env matches sensitive file patterns and was blocked
 ```
 
-Default directory ignores also skip common build, cache, virtualenv, editor, and worktree folders such as `.venv`, `__pycache__`, `.pytest_cache`, `.vscode`, and `.claude`.
+Default directory ignores also skip common build, cache, virtualenv, editor, and worktree folders such as `.venv`, `__pycache__`, `.pytest_cache`, `.vscode`, and `.claude`. Directory ignores support glob-style component patterns such as `*.egg-info`, and file ignores support basename or path globs such as `package-lock.json` and `docs/*.md`.
 
 ## WSL Performance Tip
 

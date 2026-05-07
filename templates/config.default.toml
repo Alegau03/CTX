@@ -36,3 +36,4 @@ audit_include_exclude = true
 exclude_sensitive_files = true
 sensitive_patterns = [".env", "id_rsa", ".pem", ".key", "credentials", "secret"]
 ignored_dirs = [".git", ".ctx", ".venv", "venv", "env", "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache", ".tox", ".nox", ".idea", ".vscode", ".claude", ".superpowers", ".eggs", "htmlcov", "target", "node_modules", "build", "dist", "artifacts", ".next", ".cache", "coverage"]
+ignored_files = ["*.db", "*.sqlite", "*.sqlite3", "*.pyc", "*.pyo", "*.pem", "*.log", ".env", "*.env", ".coverage", ".coverage.*", ".DS_Store", "Thumbs.db", "package-lock.json"]
