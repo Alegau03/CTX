@@ -1284,12 +1284,12 @@ fn release_version_references_target_v0_2_4() {
         fs::read_to_string(root.join("scripts/release/build.sh")).expect("build script");
     let readme = fs::read_to_string(root.join("README.md")).expect("readme");
 
-    assert!(root_manifest.contains("version = \"0.2.4\""));
+    assert!(root_manifest.contains("version = \"0.2.5\""));
     assert!(cli_manifest.contains("version.workspace = true"));
-    assert!(npm_manifest.contains("\"version\": \"0.2.4\""));
-    assert!(formula.contains("v0.2.4"));
-    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.4}\""));
-    assert!(readme.contains("ctx-0.2.4-aarch64-apple-darwin.tar.gz"));
+    assert!(npm_manifest.contains("\"version\": \"0.2.5\""));
+    assert!(formula.contains("v0.2.5"));
+    assert!(build_script.contains("VERSION=\"${VERSION:-0.2.5}\""));
+    assert!(readme.contains("ctx-0.2.5-aarch64-apple-darwin.tar.gz"));
 }
 
 #[test]

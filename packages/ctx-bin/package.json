@@ -1,6 +1,6 @@
 {
   "name": "@alegau/ctx-bin",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Prebuilt CTX binary distribution for npm users",
   "license": "MIT",
   "repository": {

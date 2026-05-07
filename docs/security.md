@@ -53,7 +53,7 @@ Expected behavior:
 attachment .env matches sensitive file patterns and was blocked
 ```
 
-Default directory ignores also skip common build, cache, virtualenv, editor, and worktree folders such as `.venv`, `__pycache__`, `.pytest_cache`, `.vscode`, and `.claude`. Directory ignores support glob-style component patterns such as `*.egg-info`, and file ignores support basename or path globs such as `package-lock.json` and `docs/*.md`.
+Default directory ignores also skip common build, cache, virtualenv, editor, and worktree folders such as `.venv`, `__pycache__`, `.pytest_cache`, `.vscode`, and `.claude`. Directory ignores support glob-style component patterns such as `*.egg-info`, and file ignores support basename or path globs such as `package-lock.json` and `docs/*.md`. These ignore rules apply to indexing and `ctx read`; `ctx pack --attach` still allows diagnostic files like `.log` attachments and only blocks sensitive patterns.
 
 ## WSL Performance Tip
 

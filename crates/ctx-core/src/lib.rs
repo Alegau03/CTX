@@ -215,7 +215,6 @@ pub fn run_pack(
 ) -> Result<PackResult> {
     let cfg = load_or_default_config(repo_root)?;
     let max_lines = cfg.pruning.max_log_lines;
-    let ignored_files = PathMatcher::exact_or_glob(&cfg.security.ignored_files);
     let sensitive_files = PathMatcher::contains_or_glob(&cfg.security.sensitive_patterns);
 
     let root_cause = if let Some(path) = attach {
@@ -232,20 +231,6 @@ pub fn run_pack(
             );
             bail!(
                 "attachment {} matches sensitive file patterns and was blocked",
-                path.display()
-            );
-        }
-        if ignored_files.matches_path(Some(repo_root), path) {
-            audit_privacy_decision(
-                repo_root,
-                &cfg,
-                "excluded",
-                Some(path),
-                "ignored_file_pattern",
-                "blocked ignored attachment before packing",
-            );
-            bail!(
-                "attachment {} matches ignored file patterns and was blocked",
                 path.display()
             );
         }
@@ -369,12 +354,24 @@ pub fn run_explain(repo_root: &Path, query: &str) -> Result<ExplainResult> {
 }
 
 pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
+    run_index_internal(repo_root, include_paths, false)
+}
+
+pub fn run_reindex(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
+    run_index_internal(repo_root, include_paths, true)
+}
+
+fn run_index_internal(
+    repo_root: &Path,
+    include_paths: &[String],
+    prune_stale: bool,
+) -> Result<usize> {
     let cfg = load_or_default_config(repo_root)?;
     if !cfg.graph.enabled {
         bail!("graph is disabled in config")
     }
 
-    let store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
+    let mut store = GraphStore::open(&repo_root.join(&cfg.graph.store))?;
     store.init_schema()?;
 
     let roots: Vec<PathBuf> = if include_paths.is_empty() {
@@ -390,7 +387,9 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     let mut indexed_files = Vec::new();
     let previous_state = load_index_cache_state(repo_root)?;
     let mut next_state = previous_state.clone();
+    next_state.files.clear();
     let mut report = IndexCacheReport::default();
+    let mut scanned_relative_paths = HashSet::new();
     for root in roots {
         for entry in WalkDir::new(root)
             .into_iter()
@@ -435,6 +434,7 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
                 .unwrap_or(path)
                 .to_string_lossy()
                 .to_string();
+            scanned_relative_paths.insert(rel.clone());
             let fingerprint = compute_fingerprint(&content);
             let unchanged = previous_state
                 .files
@@ -456,6 +456,8 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
                 continue;
             }
 
+            let _ = store.remove_file(&rel);
+
             store.index_file(&rel)?;
             upsert_symbols_and_snippets(&store, &rel, &content)?;
             indexed_files.push((rel.clone(), content));
@@ -465,6 +467,27 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
                 report.changed_files += 1;
             } else {
                 report.new_files += 1;
+            }
+        }
+    }
+
+    if prune_stale {
+        for rel in previous_state.files.keys() {
+            if scanned_relative_paths.contains(rel) {
+                continue;
+            }
+            if !should_prune_stale_entry(rel, include_paths) {
+                if let Some(entry) = previous_state.files.get(rel) {
+                    next_state.files.insert(rel.clone(), entry.clone());
+                }
+                continue;
+            }
+            let _ = store.remove_file(rel);
+        }
+    } else {
+        for (rel, entry) in &previous_state.files {
+            if !next_state.files.contains_key(rel) {
+                next_state.files.insert(rel.clone(), entry.clone());
             }
         }
     }
@@ -489,6 +512,18 @@ pub fn run_index(repo_root: &Path, include_paths: &[String]) -> Result<usize> {
     );
 
     Ok(indexed)
+}
+
+fn should_prune_stale_entry(rel_path: &str, include_paths: &[String]) -> bool {
+    if include_paths.is_empty() {
+        return true;
+    }
+
+    let normalized_rel = rel_path.replace('\\', "/");
+    include_paths.iter().any(|path| {
+        let normalized = path.trim_matches('/').replace('\\', "/");
+        normalized_rel == normalized || normalized_rel.starts_with(&format!("{normalized}/"))
+    })
 }
 
 pub fn run_graph_query(repo_root: &Path, query: &str) -> Result<Vec<String>> {

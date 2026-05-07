@@ -103,6 +103,39 @@ impl GraphStore {
         Ok(())
     }
 
+    pub fn remove_file(&mut self, path: &str) -> Result<bool> {
+        let Some(file_id) = self.file_id(path)? else {
+            return Ok(false);
+        };
+
+        let tx = self
+            .conn
+            .transaction()
+            .context("failed to start graph prune transaction")?;
+        tx.execute(
+            "DELETE FROM edges
+             WHERE src_symbol_id IN (SELECT id FROM symbols WHERE file_id = ?1)
+                OR dst_symbol_id IN (SELECT id FROM symbols WHERE file_id = ?1)",
+            params![file_id],
+        )
+        .context("failed to delete file edges")?;
+        tx.execute(
+            "DELETE FROM embeddings_metadata
+             WHERE snippet_id IN (SELECT id FROM snippets WHERE file_id = ?1)",
+            params![file_id],
+        )
+        .context("failed to delete file embedding metadata")?;
+        tx.execute("DELETE FROM snippets WHERE file_id = ?1", params![file_id])
+            .context("failed to delete file snippets")?;
+        tx.execute("DELETE FROM symbols WHERE file_id = ?1", params![file_id])
+            .context("failed to delete file symbols")?;
+        tx.execute("DELETE FROM files WHERE id = ?1", params![file_id])
+            .context("failed to delete file row")?;
+        tx.commit()
+            .context("failed to commit graph prune transaction")?;
+        Ok(true)
+    }
+
     pub fn query_files(&self, term: &str) -> Result<Vec<String>> {
         let pattern = format!("%{}%", term);
         let mut stmt = self

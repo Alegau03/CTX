@@ -8,7 +8,7 @@ use ctx_core::{
     run_graph_query, run_index, run_memory_ab_benchmark, run_memory_ab_benchmark_suite,
     run_memory_bootstrap_markdown, run_memory_delete, run_memory_export_markdown, run_memory_get,
     run_memory_import_markdown, run_memory_list, run_memory_search, run_memory_set, run_pack,
-    run_prune_diff, run_prune_logs, run_read, run_retrieve,
+    run_prune_diff, run_prune_logs, run_read, run_reindex, run_retrieve,
 };
 use ctx_graph::GraphStore;
 use ctx_hooks::apply_pre_prompt_hook;
@@ -304,13 +304,17 @@ fn run() -> Result<()> {
             let config_path = init_repo(&repo_root)?;
             println!("initialized: {}", config_path.display());
         }
-        Commands::Index { paths } | Commands::Reindex { paths } => {
+        Commands::Index { paths } => {
             let indexed = run_index(&repo_root, &paths)?;
+            println!("indexed_files: {indexed}");
+        }
+        Commands::Reindex { paths } => {
+            let indexed = run_reindex(&repo_root, &paths)?;
             println!("indexed_files: {indexed}");
         }
         Commands::Graph { command } => match command {
             GraphCommands::Build | GraphCommands::Rebuild => {
-                let indexed = run_index(&repo_root, &[])?;
+                let indexed = run_reindex(&repo_root, &[])?;
                 println!("graph_build_indexed_files: {indexed}");
             }
             GraphCommands::Query { query } => {

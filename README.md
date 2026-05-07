@@ -153,16 +153,16 @@ Download the latest assets from [GitHub Releases](https://github.com/Alegau03/CT
 
 ```bash
 shasum -a 256 -c SHA256SUMS
-tar -xzf ctx-0.2.4-aarch64-apple-darwin.tar.gz
+tar -xzf ctx-0.2.5-aarch64-apple-darwin.tar.gz
 mkdir -p "$HOME/.local/bin"
-install -m 0755 ctx-0.2.4-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
+install -m 0755 ctx-0.2.5-aarch64-apple-darwin/ctx "$HOME/.local/bin/ctx"
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 If you prefer a system-wide install:
 
 ```bash
-sudo install -m 0755 ctx-0.2.4-aarch64-apple-darwin/ctx /usr/local/bin/ctx
+sudo install -m 0755 ctx-0.2.5-aarch64-apple-darwin/ctx /usr/local/bin/ctx
 ```
 
 For the full install matrix, release verification notes, native update behavior, and distribution details, see [docs/install.md](docs/install.md).

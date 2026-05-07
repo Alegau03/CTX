@@ -1,7 +1,7 @@
 class Ctx < Formula
   desc "Local-first context runtime engine for coding agents"
   homepage "https://github.com/Alegau03/CTX"
-  url "https://github.com/Alegau03/CTX/archive/refs/tags/v0.2.4.tar.gz"
+  url "https://github.com/Alegau03/CTX/archive/refs/tags/v0.2.5.tar.gz"
   sha256 "7865c569d0745c9f7c1182723f859f483be7eadedef6f17f7217c7b80ddf0eec"
   license "MIT"
 

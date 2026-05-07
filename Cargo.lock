@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-ast"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "regex",
  "serde",
@@ -294,7 +294,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-cli"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-config"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "serde",
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-core"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "ctx-ast",
@@ -345,7 +345,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-graph"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "rusqlite",
@@ -355,21 +355,21 @@ dependencies = [
 
 [[package]]
 name = "ctx-hooks"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "ctx-intake"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "ctx-mcp"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-pack"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "ctx-token",
  "pretty_assertions",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-prune"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "pretty_assertions",
  "regex",
@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-semantic"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
  "tempfile",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-telemetry"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "serde",
@@ -424,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "ctx-token"
-version = "0.2.4"
+version = "0.2.5"
 
 [[package]]
 name = "deranged"
