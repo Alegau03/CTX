@@ -12,3 +12,4 @@
 /demo/fixtures/opencode-auth-lab/opencode *.json
 /docs/superpowers/
 .DS_Store
+.claude/settings.local.json
