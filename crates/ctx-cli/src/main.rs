@@ -24,6 +24,7 @@ use update::{UpdateArgs, run_update};
 #[derive(Debug, Parser)]
 #[command(
     name = "ctx",
+    version = concat!(env!("CARGO_PKG_VERSION"), env!("CTX_BUILD_INFO")),
     about = "Context Runtime Engine for Coding Agents",
     disable_help_subcommand = true
 )]
