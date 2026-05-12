@@ -13,3 +13,4 @@
 /docs/superpowers/
 .DS_Store
 .claude/settings.local.json
+.vscode/tasks.json
