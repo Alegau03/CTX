@@ -243,7 +243,7 @@ For full usage, expected outputs, and CLI equivalents, see [guide.md](guide.md) 
 | Retrieval | hybrid graph, snippets, FTS, symbols, and semantic ranking with local fallback |
 | Pruning | deterministic log and diff pruning with parser-aware diagnostics |
 | MCP | local stdio MCP plus localhost HTTP JSON-RPC runtime |
-| File coverage | Rust, Python, TypeScript, JavaScript, Markdown runbooks, and common config/script files |
+| File coverage | Rust, Python, TypeScript, JavaScript, Swift (iOS/macOS), C, C++ (including `.h`/`.hpp` headers with prototypes and inline definitions), Markdown runbooks, and common config/script files |
 | Privacy | local-only defaults, sensitive attachment blocking, local audit log |
 
 ## Graph Memory

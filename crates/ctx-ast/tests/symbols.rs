@@ -370,3 +370,504 @@ func newAPI() {}
     );
 }
 
+
+// ─── C tests ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn extracts_c_functions() {
+    let code = r#"
+#include <zephyr/kernel.h>
+
+int gnss_init(void) {
+    return 0;
+}
+
+static void gnss_callback(int event) {
+    (void)event;
+}
+
+void *gnss_get_handle(void) {
+    return NULL;
+}
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_init" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_callback" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_get_handle" && s.kind == SymbolKind::Function)
+    );
+}
+
+#[test]
+fn extracts_c_structs_and_enums() {
+    let code = r#"
+struct gnss_config {
+    int interval_ms;
+    int timeout_ms;
+};
+
+typedef struct {
+    float lat;
+    float lon;
+    float alt;
+} gnss_fix_t;
+
+enum gnss_state {
+    GNSS_IDLE,
+    GNSS_SEARCHING,
+    GNSS_FIXED,
+};
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss.h");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_config" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_fix_t" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_state" && s.kind == SymbolKind::Class)
+    );
+}
+
+#[test]
+fn extracts_c_includes() {
+    let code = r#"
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include "gnss.h"
+"#;
+
+    let symbols = extract_symbols(code, "src/main.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Import && s.signature.contains("zephyr/kernel.h"))
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Import && s.signature.contains("gnss.h"))
+    );
+}
+
+#[test]
+fn extracts_c_pointer_function() {
+    let code = r#"
+int (*callback_fn)(void *ctx, int event);
+
+static int *get_buffer(size_t len) {
+    return NULL;
+}
+"#;
+
+    let symbols = extract_symbols(code, "src/driver.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "get_buffer" && s.kind == SymbolKind::Function)
+    );
+}
+
+#[test]
+fn extracts_c_header_prototypes_and_inline_definitions() {
+    let code = r#"
+#ifndef GNSS_H
+#define GNSS_H
+
+int gnss_init(void);
+void gnss_shutdown(void);
+
+static inline int gnss_is_ready(int handle) {
+    return handle > 0;
+}
+
+#endif
+"#;
+
+    let symbols = extract_symbols(code, "include/gnss.h");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_init" && s.kind == SymbolKind::Function),
+        "expected prototype gnss_init"
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_shutdown" && s.kind == SymbolKind::Function),
+        "expected prototype gnss_shutdown"
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss_is_ready" && s.kind == SymbolKind::Function),
+        "expected inline definition gnss_is_ready"
+    );
+}
+
+#[test]
+fn extracts_cpp_header_inline_template_definitions() {
+    let code = r#"
+#pragma once
+
+namespace ring {
+
+template<typename T>
+class Buffer {
+public:
+    bool push(const T &item) { return true; }
+    inline size_t size() const { return m_size; }
+private:
+    size_t m_size = 0;
+};
+
+inline int clamp(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
+}
+"#;
+
+    let symbols = extract_symbols(code, "include/ring.hpp");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "push" && s.kind == SymbolKind::Function),
+        "expected inline method push"
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "size" && s.kind == SymbolKind::Function),
+        "expected inline method size"
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "clamp" && s.kind == SymbolKind::Function),
+        "expected free inline function clamp"
+    );
+}
+
+// ─── Zephyr tests ─────────────────────────────────────────────────────────────
+
+#[test]
+fn extracts_zephyr_kernel_objects() {
+    let code = r#"
+K_THREAD_DEFINE(gnss_thread, 1024, gnss_thread_fn, NULL, NULL, NULL, 5, 0, 0);
+K_SEM_DEFINE(gnss_fix_sem, 0, 1);
+K_MUTEX_DEFINE(gnss_mutex);
+K_MSGQ_DEFINE(gnss_msgq, sizeof(struct gnss_fix), 10, 4);
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss.c");
+    // Kernel object macros are detected as function-like macro definitions
+    assert!(symbols.iter().any(|s| s.name.starts_with("K_THREAD_DEFINE(") && s.kind == SymbolKind::Class));
+    assert!(symbols.iter().any(|s| s.name.starts_with("K_SEM_DEFINE(") && s.kind == SymbolKind::Class));
+    assert!(symbols.iter().any(|s| s.name.starts_with("K_MUTEX_DEFINE(") && s.kind == SymbolKind::Class));
+    assert!(symbols.iter().any(|s| s.name.starts_with("K_MSGQ_DEFINE(") && s.kind == SymbolKind::Class));
+}
+
+#[test]
+fn extracts_zephyr_device_registration() {
+    let code = r#"
+DEVICE_DT_DEFINE(DT_NODELABEL(gnss0),
+    gnss_init,
+    NULL,
+    &gnss_data,
+    &gnss_config,
+    POST_KERNEL,
+    CONFIG_GNSS_INIT_PRIORITY,
+    &gnss_api);
+
+SYS_INIT(board_init, PRE_KERNEL_1, 0);
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss_driver.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("DEVICE_DT_DEFINE") && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("SYS_INIT") && s.kind == SymbolKind::Class)
+    );
+}
+
+#[test]
+fn extracts_kconfig_references() {
+    let code = r#"
+#ifdef CONFIG_GNSS_ENABLE
+    int interval = CONFIG_GNSS_POLL_INTERVAL_MS;
+#endif
+
+#if defined(CONFIG_MQTT_LIB_TLS)
+    bool use_tls = true;
+#endif
+"#;
+
+    let symbols = extract_symbols(code, "src/main.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "CONFIG_GNSS_ENABLE" && s.kind == SymbolKind::Import)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "CONFIG_GNSS_POLL_INTERVAL_MS" && s.kind == SymbolKind::Import)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "CONFIG_MQTT_LIB_TLS" && s.kind == SymbolKind::Import)
+    );
+}
+
+#[test]
+fn extracts_dt_devicetree_lookups() {
+    let code = r#"
+#define GNSS_NODE DT_ALIAS(gnss)
+#define LED_NODE  DT_NODELABEL(led0)
+#define SPI_NODE  DT_PATH(soc, spi_40003000)
+
+static const struct device *gnss_dev = DEVICE_DT_GET(DT_ALIAS(gnss));
+"#;
+
+    let symbols = extract_symbols(code, "src/board.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("DT_ALIAS(gnss)") && s.kind == SymbolKind::Import)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("DT_NODELABEL(led0)") && s.kind == SymbolKind::Import)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("DT_PATH(") && s.kind == SymbolKind::Import)
+    );
+}
+
+// ─── FreeRTOS tests ───────────────────────────────────────────────────────────
+
+#[test]
+fn extracts_freertos_task_creation() {
+    let code = r#"
+void app_main(void) {
+    xTaskCreate(gnss_task, "gnss", 4096, NULL, 5, &gnss_handle);
+    xTaskCreateStatic(wifi_task, "wifi", 4096, NULL, 4, wifi_stack, &wifi_tcb);
+}
+"#;
+
+    let symbols = extract_symbols(code, "src/main.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xTaskCreate(") && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xTaskCreateStatic(") && s.kind == SymbolKind::Class)
+    );
+}
+
+#[test]
+fn extracts_freertos_sync_primitives() {
+    let code = r#"
+void init_sync(void) {
+    gnss_sem   = xSemaphoreCreateBinary();
+    gnss_mutex = xSemaphoreCreateMutex();
+    gnss_queue = xQueueCreate(10, sizeof(gnss_fix_t));
+    gnss_timer = xTimerCreate("gnss_timer", pdMS_TO_TICKS(1000), pdTRUE, 0, gnss_timer_cb);
+}
+"#;
+
+    let symbols = extract_symbols(code, "src/sync.c");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xSemaphoreCreateBinary(") && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xSemaphoreCreateMutex(") && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xQueueCreate(") && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name.starts_with("xTimerCreate(") && s.kind == SymbolKind::Class)
+    );
+}
+
+// ─── C++ tests ────────────────────────────────────────────────────────────────
+
+#[test]
+fn extracts_cpp_class_and_methods() {
+    let code = r#"
+class GnssManager {
+public:
+    GnssManager();
+    ~GnssManager();
+    bool init();
+    bool getFix(float *lat, float *lon);
+private:
+    int m_handle;
+};
+
+bool GnssManager::init() {
+    return true;
+}
+
+bool GnssManager::getFix(float *lat, float *lon) {
+    return false;
+}
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss_manager.hpp");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "GnssManager" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "init" && s.kind == SymbolKind::Function)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "getFix" && s.kind == SymbolKind::Function)
+    );
+}
+
+#[test]
+fn extracts_cpp_namespace() {
+    let code = r#"
+namespace wiskerwatcher {
+namespace gnss {
+
+class Fix {
+public:
+    float lat;
+    float lon;
+};
+
+bool acquire(Fix &fix);
+
+} // namespace gnss
+} // namespace wiskerwatcher
+"#;
+
+    let symbols = extract_symbols(code, "src/gnss.hpp");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "wiskerwatcher" && s.kind == SymbolKind::Module)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "gnss" && s.kind == SymbolKind::Module)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "Fix" && s.kind == SymbolKind::Class)
+    );
+}
+
+#[test]
+fn extracts_cpp_template() {
+    let code = r#"
+template<typename T>
+class RingBuffer {
+public:
+    bool push(const T &item);
+    bool pop(T &item);
+    size_t size() const;
+private:
+    T m_buf[64];
+    size_t m_head = 0;
+    size_t m_tail = 0;
+};
+"#;
+
+    let symbols = extract_symbols(code, "src/ring_buffer.hpp");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "RingBuffer<>" && s.kind == SymbolKind::Class)
+    );
+}
+
+#[test]
+fn extracts_cpp_with_kconfig_refs() {
+    let code = r#"
+#include <zephyr/kernel.h>
+
+namespace ww {
+
+class MqttClient {
+public:
+    bool connect() {
+#ifdef CONFIG_MQTT_LIB_TLS
+        return connectTls(CONFIG_MQTT_BROKER_HOSTNAME, CONFIG_MQTT_BROKER_PORT_TLS);
+#else
+        return connectPlain(CONFIG_MQTT_BROKER_HOSTNAME, CONFIG_MQTT_BROKER_PORT);
+#endif
+    }
+};
+
+} // namespace ww
+"#;
+
+    let symbols = extract_symbols(code, "src/mqtt_client.cpp");
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "MqttClient" && s.kind == SymbolKind::Class)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "CONFIG_MQTT_LIB_TLS" && s.kind == SymbolKind::Import)
+    );
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "CONFIG_MQTT_BROKER_HOSTNAME" && s.kind == SymbolKind::Import)
+    );
+}
